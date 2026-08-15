@@ -252,6 +252,20 @@ function CRMApp({ profile, onSignOut }) {
     }
   };
 
+  const deleteTeamMember = async (member) => {
+    if (
+      profile?.role !== "admin" ||
+      !confirm(`Delete ${member.name} from the team?`)
+    )
+      return;
+    try {
+      await remove("team_members", member.id);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const saveQuotation = async (record) => {
     try {
       await save("quotations", { ...record, id: record.id || newId() });
@@ -517,6 +531,8 @@ function CRMApp({ profile, onSignOut }) {
               rows={filtered}
               onEdit={(item) => setEditor({ table: view, item })}
               onStageChange={moveLead}
+              isAdmin={profile?.role === "admin"}
+              onDeleteTeamMember={deleteTeamMember}
             />
           )}
         </section>
@@ -1212,7 +1228,14 @@ function Empty() {
   );
 }
 
-function Records({ table, rows, onEdit, onStageChange }) {
+function Records({
+  table,
+  rows,
+  onEdit,
+  onStageChange,
+  isAdmin,
+  onDeleteTeamMember,
+}) {
   if (!rows.length)
     return (
       <div className="panel">
@@ -1317,6 +1340,7 @@ function Records({ table, rows, onEdit, onStageChange }) {
                 <th>Role</th>
                 <th>Phone</th>
                 <th>Email</th>
+                {isAdmin && <th>Action</th>}
               </>
             ) : (
               <>
@@ -1389,6 +1413,20 @@ function Records({ table, rows, onEdit, onStageChange }) {
                   <td>{r.role}</td>
                   <td>{r.phone || "—"}</td>
                   <td>{r.email || "—"}</td>
+                  {isAdmin && (
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-user-btn"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteTeamMember?.(r);
+                        }}
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </td>
+                  )}
                 </>
               ) : (
                 <>
