@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, BriefcaseBusiness, FileText, LayoutDashboard, Plus, Search, Settings, Trash2, Users, X, Zap } from 'lucide-react'
-import { isSupabaseConfigured } from './lib/supabase'
+import { BarChart3, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, Plus, Search, Settings, ShieldCheck, Trash2, Users, X, Zap } from 'lucide-react'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { list, remove, save, subscribe, TABLES } from './lib/database'
 import sunregaLogo from './assets/sunrega-logo.png'
 
 const STAGES = ['New', 'Contacted', 'Survey Scheduled', 'Quotation Sent', 'Negotiation', 'Won', 'Lost']
 const SEGMENTS = ['Residential Rooftop', 'Commercial Rooftop', 'Industrial', 'Government', 'Ground Mounted']
-const nav = [
+const baseNav = [
   ['dashboard', 'Dashboard', LayoutDashboard], ['leads', 'Leads', BarChart3],
   ['quotations', 'Quotations', FileText], ['projects', 'Projects', BriefcaseBusiness],
   ['team_members', 'Team', Users], ['settings', 'Settings', Settings],
@@ -31,12 +31,38 @@ const fields = {
 }
 
 function App() {
+  const [session, setSession] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
+
+  useEffect(() => {
+    if (!supabase) return
+    const loadProfile = async (nextSession) => {
+      setSession(nextSession)
+      if (!nextSession) { setProfile(null); setAuthLoading(false); return }
+      const { data } = await supabase.from('profiles').select('*').eq('id', nextSession.user.id).single()
+      setProfile(data || { id: nextSession.user.id, email: nextSession.user.email, full_name: nextSession.user.email, role: 'worker' })
+      setAuthLoading(false)
+    }
+    supabase.auth.getSession().then(({ data }) => loadProfile(data.session))
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => loadProfile(nextSession))
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  if (!isSupabaseConfigured) return <SetupRequired />
+  if (authLoading) return <div className="auth-page"><div className="auth-card auth-loading">Loading secure workspace…</div></div>
+  if (!session) return <Login />
+  return <CRMApp profile={profile} onSignOut={() => supabase.auth.signOut()} />
+}
+
+function CRMApp({ profile, onSignOut }) {
   const [view, setView] = useState('dashboard')
   const [data, setData] = useState(Object.fromEntries(TABLES.map((t) => [t, []])))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState(null)
+  const appNav = profile?.role === 'admin' ? [...baseNav.slice(0, 5), ['users', 'User access', ShieldCheck], baseNav[5]] : baseNav
 
   const refresh = async () => {
     try {
@@ -78,11 +104,12 @@ function App() {
   return <div className="app-shell">
     <aside>
       <div className="brand"><img src={sunregaLogo} alt="Sunrega — Powering a sustainable tomorrow" /></div>
-      <nav>{nav.map(([id, label, Icon]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon size={18} />{label}</button>)}</nav>
-      <div className="sync"><i className={isSupabaseConfigured ? 'online' : ''} />{isSupabaseConfigured ? 'Supabase connected' : 'Local demo mode'}<small>{isSupabaseConfigured ? 'Live team sync enabled' : 'Add environment keys to connect'}</small></div>
+      <nav>{appNav.map(([id, label, Icon]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon size={18} />{label}</button>)}</nav>
+      <div className="account"><span>{profile?.full_name || profile?.email}<small>{profile?.role}</small></span><button title="Sign out" onClick={onSignOut}><LogOut size={17} /></button></div>
+      <div className="sync"><i className="online" />Supabase connected<small>Live team sync enabled</small></div>
     </aside>
     <main>
-      <header><div><h1>{nav.find(([id]) => id === view)?.[1] || 'Dashboard'}</h1><p>Solar sales and execution, all in one place.</p></div><div className="header-actions"><label><Search size={16} /><input placeholder="Search records..." value={search} onChange={(e) => setSearch(e.target.value)} /></label>{TABLES.includes(view) && <button className="primary" onClick={() => setEditor({ table: view, item: {} })}><Plus size={17} /> Add new</button>}</div></header>
+      <header><div><h1>{appNav.find(([id]) => id === view)?.[1] || 'Dashboard'}</h1><p>Solar sales and execution, all in one place.</p></div><div className="header-actions"><label><Search size={16} /><input placeholder="Search records..." value={search} onChange={(e) => setSearch(e.target.value)} /></label>{TABLES.includes(view) && <button className="primary" onClick={() => setEditor({ table: view, item: {} })}><Plus size={17} /> Add new</button>}</div></header>
       <section className="content">
         {error && <div className="alert">{error}<button onClick={() => setError('')}><X size={16} /></button></div>}
         {loading ? <div className="empty">Loading your workspace…</div> : view === 'dashboard' ? <>
@@ -96,11 +123,45 @@ function App() {
             <div className="panel"><div className="panel-title"><h2>Lead pipeline</h2><button onClick={() => setView('leads')}>View all</button></div><div className="funnel">{STAGES.slice(0, 6).map((stage) => { const count = data.leads.filter((lead) => lead.stage === stage).length; return <div key={stage}><span>{stage}<b>{count}</b></span><div><i style={{ width: `${Math.max(4, count / Math.max(1, data.leads.length) * 100)}%` }} /></div></div> })}</div></div>
             <div className="panel"><div className="panel-title"><h2>Project delivery</h2></div>{data.projects.length ? data.projects.slice(0, 5).map((p) => <div className="project-line" key={p.id}><span><b>{p.name}</b><small>{p.kw} kW · {p.status}</small></span><strong>{p.progress || 0}%</strong><div><i style={{ width: `${p.progress || 0}%` }} /></div></div>) : <Empty />}</div>
           </div>
-        </> : view === 'settings' ? <SettingsView /> : <Records table={view} rows={filtered} onEdit={(item) => setEditor({ table: view, item })} />}
+        </> : view === 'settings' ? <SettingsView /> : view === 'users' && profile?.role === 'admin' ? <UserManagement /> : <Records table={view} rows={filtered} onEdit={(item) => setEditor({ table: view, item })} />}
       </section>
     </main>
     {editor && <Modal editor={editor} submit={submit} destroy={destroy} close={() => setEditor(null)} />}
   </div>
+}
+
+function Login() {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const signIn = async (event) => {
+    event.preventDefault(); setBusy(true); setError('')
+    const form = new FormData(event.currentTarget)
+    const { error: authError } = await supabase.auth.signInWithPassword({ email: form.get('email'), password: form.get('password') })
+    if (authError) setError(authError.message)
+    setBusy(false)
+  }
+  return <div className="auth-page"><form className="auth-card" onSubmit={signIn}><img src={sunregaLogo} alt="Sunrega" /><div className="auth-heading"><span>TEAM PORTAL</span><h1>Welcome back</h1><p>Sign in to manage leads and solar projects.</p></div>{error && <div className="auth-error">{error}</div>}<label><span>Email / user ID</span><input name="email" type="email" autoComplete="username" required placeholder="name@sunrega.com" /></label><label><span>Password</span><input name="password" type="password" autoComplete="current-password" required placeholder="Enter your password" /></label><button className="primary auth-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in securely'}</button><small className="auth-help">Contact your administrator if you need an account.</small></form></div>
+}
+
+function SetupRequired() { return <div className="auth-page"><div className="auth-card"><h1>Supabase setup required</h1><p>Add the project URL and public anon key to the Vercel environment variables, then redeploy.</p></div></div> }
+
+function UserManagement() {
+  const [users, setUsers] = useState([])
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const loadUsers = async () => {
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    if (error) setMessage(error.message); else setUsers(data || [])
+  }
+  useEffect(() => { loadUsers() }, [])
+  const createUser = async (event) => {
+    event.preventDefault(); setBusy(true); setMessage('')
+    const form = new FormData(event.currentTarget)
+    const { error } = await supabase.functions.invoke('admin-create-user', { body: { fullName: form.get('fullName'), email: form.get('email'), password: form.get('password'), role: form.get('role') } })
+    if (error) setMessage(error.message); else { setMessage('User created successfully.'); event.currentTarget.reset(); await loadUsers() }
+    setBusy(false)
+  }
+  return <div className="users-grid"><form className="panel create-user" onSubmit={createUser}><h2>Create team login</h2><p className="muted">Create a secure user ID and temporary password for a worker.</p>{message && <div className="user-message">{message}</div>}<label><span>Worker name</span><input name="fullName" required /></label><label><span>Email / user ID</span><input name="email" type="email" required /></label><label><span>Temporary password</span><input name="password" type="password" minLength="8" required /></label><label><span>Access level</span><select name="role" defaultValue="worker"><option value="worker">Worker</option><option value="admin">Administrator</option></select></label><button className="primary" disabled={busy}>{busy ? 'Creating…' : 'Create user'}</button></form><div className="panel table-wrap"><div className="user-list-title"><h2>Team access</h2><span>{users.length} users</span></div><table><thead><tr><th>Name</th><th>User ID</th><th>Role</th><th>Status</th></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><b>{user.full_name || '—'}</b></td><td>{user.email}</td><td><Badge text={user.role} /></td><td>{user.is_active ? 'Active' : 'Disabled'}</td></tr>)}</tbody></table></div></div>
 }
 
 function Kpi({ label, value, note }) { return <div className="kpi"><div className="kpi-icon"><Zap size={18} /></div><p>{label}</p><strong>{value}</strong><small>{note}</small></div> }

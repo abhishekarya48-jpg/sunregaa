@@ -17,6 +17,16 @@ The app works without environment variables in local demo mode. To enable shared
 3. Put the project URL and public anon key in `.env.local`.
 4. Restart the dev server.
 
+## Login and worker accounts
+
+1. Run `supabase/auth-migration.sql` in the Supabase SQL Editor.
+2. In Supabase **Authentication → Users**, create the first administrator.
+3. Run the final commented `update profiles ...` statement in the migration with that administrator's email.
+4. Deploy the account-creation function with `supabase functions deploy admin-create-user`.
+5. Sign in. Administrators see **User access** and can create admin or worker logins. Workers can use the CRM but cannot manage accounts.
+
+The Edge Function uses Supabase's built-in service-role secret. Never add that secret to Vercel or the React application.
+
 Never expose a Supabase `service_role` key in this frontend. The included RLS policies are deliberately open for a prototype; add Supabase Auth and organization-scoped policies before a public production launch.
 
 ## Commands
