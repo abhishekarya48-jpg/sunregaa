@@ -42,6 +42,12 @@ drop policy if exists "demo read team" on public.team_members;
 drop policy if exists "demo write team" on public.team_members;
 drop policy if exists "demo read quotes" on public.quotations;
 drop policy if exists "demo write quotes" on public.quotations;
+drop policy if exists "authenticated leads" on public.leads;
+drop policy if exists "authenticated projects" on public.projects;
+drop policy if exists "authenticated team" on public.team_members;
+drop policy if exists "authenticated quotations" on public.quotations;
+drop policy if exists "read own profile or admin" on public.profiles;
+drop policy if exists "admin manages profiles" on public.profiles;
 
 create policy "authenticated leads" on public.leads for all to authenticated using (true) with check (true);
 create policy "authenticated projects" on public.projects for all to authenticated using (true) with check (true);
