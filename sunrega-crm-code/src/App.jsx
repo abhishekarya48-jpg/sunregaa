@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Plus,
+  ReceiptIndianRupee,
   Search,
   Settings,
   ShieldCheck,
@@ -144,6 +145,7 @@ function CRMApp({ profile, onSignOut }) {
     profile?.role === "admin"
       ? [
           ...baseNav.slice(0, 5),
+          ["billing", "Billing", ReceiptIndianRupee],
           ["users", "User access", ShieldCheck],
           baseNav[5],
         ]
@@ -377,6 +379,8 @@ function CRMApp({ profile, onSignOut }) {
             </>
           ) : view === "settings" ? (
             <SettingsView />
+          ) : view === "billing" && profile?.role === "admin" ? (
+            <Billing />
           ) : view === "users" && profile?.role === "admin" ? (
             <UserManagement />
           ) : (
@@ -607,6 +611,419 @@ function UserManagement() {
       </div>
     </div>
   );
+}
+
+const HSN_PRESETS = [
+  ["8541", "Solar PV modules / panels", 12],
+  ["8504 40 90", "Solar inverter", 18],
+  ["8507", "Lithium-ion / storage battery", 18],
+  ["7308", "Mounting structure", 18],
+  ["8544", "Solar cables / wires", 18],
+  ["8537", "ACDB / DCDB combiner panel", 18],
+  ["995461", "Solar installation / EPC service", 12],
+  ["custom", "Custom / other", 18],
+];
+const emptyInvoiceItem = () => ({
+  id: newId(),
+  description: "",
+  hsn: "8541",
+  quantity: 1,
+  rate: 0,
+  gst: 12,
+});
+const newInvoice = () => ({
+  id: newId(),
+  invoice_number: `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+  invoice_date: new Date().toISOString().slice(0, 10),
+  title: "TAX INVOICE - SOLAR POWER SYSTEM",
+  seller_details:
+    "SUNREGA\nSCO 137, Feroze Gandhi Market, Ludhiana - 141001, Punjab\nMob: +91-9646122694\nGSTIN: 03BCTPA5272L1ZE",
+  buyer_order: "",
+  vehicle_number: "",
+  place_of_supply: "Punjab",
+  reverse_charge: "No",
+  payment_terms: "100% Advance",
+  copy_type: "Original",
+  bill_to: "",
+  ship_to: "Same as billing address",
+  round_off: 0,
+  bank_details:
+    "Bank Name: Union Bank of India\nBranch: Model Town Extn, Ludhiana\nAccount No.: 264911100001051\nIFSC: UBIN0816680",
+  terms:
+    "1. Goods once sold cannot be taken back.\n2. Payment is due as per the agreed terms.\n3. Warranty is governed by manufacturer terms.",
+  items: [emptyInvoiceItem()],
+});
+
+function Billing() {
+  const [invoice, setInvoice] = useState(newInvoice);
+  const [saved, setSaved] = useState([]);
+  const [message, setMessage] = useState("");
+  const update = (key, value) =>
+    setInvoice((current) => ({ ...current, [key]: value }));
+  const updateItem = (id, key, value) =>
+    setInvoice((current) => ({
+      ...current,
+      items: current.items.map((item) =>
+        item.id === id ? { ...item, [key]: value } : item,
+      ),
+    }));
+  const totals = invoice.items.reduce(
+    (sum, item) => {
+      const taxable = Number(item.quantity || 0) * Number(item.rate || 0);
+      const tax = (taxable * Number(item.gst || 0)) / 100;
+      return { taxable: sum.taxable + taxable, gst: sum.gst + tax };
+    },
+    { taxable: 0, gst: 0 },
+  );
+  const net = totals.taxable + totals.gst + Number(invoice.round_off || 0);
+  const load = async () => {
+    const { data, error } = await supabase
+      .from("invoices")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) setMessage(error.message);
+    else setSaved(data || []);
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  const saveInvoice = async () => {
+    if (!invoice.bill_to.trim()) {
+      setMessage("Enter the customer billing details.");
+      return false;
+    }
+    const record = {
+      id: invoice.id,
+      invoice_number: invoice.invoice_number,
+      invoice_date: invoice.invoice_date,
+      bill_to: invoice.bill_to,
+      total: Math.round(net * 100) / 100,
+      data: invoice,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from("invoices").upsert(record);
+    if (error) {
+      setMessage(error.message);
+      return false;
+    }
+    setMessage("Invoice saved successfully.");
+    await load();
+    return true;
+  };
+  const saveAndPrint = () => {
+    printInvoice(invoice, totals, net);
+    saveInvoice();
+  };
+  return (
+    <div className="billing-page">
+      <div className="billing-toolbar">
+        <button className="primary" onClick={() => setInvoice(newInvoice())}>
+          <Plus size={16} /> New invoice
+        </button>
+        <button onClick={saveInvoice}>Save invoice</button>
+        <button className="print-btn" onClick={saveAndPrint}>
+          Print / Save PDF
+        </button>
+      </div>
+      {message && <div className="billing-message">{message}</div>}
+      <div className="billing-layout">
+        <div className="invoice-sheet">
+          <img src={sunregaLogo} alt="Sunrega" />
+          <input
+            className="invoice-title"
+            value={invoice.title}
+            onChange={(e) => update("title", e.target.value)}
+          />
+          <InvoiceField
+            label="From (seller details)"
+            area
+            value={invoice.seller_details}
+            onChange={(value) => update("seller_details", value)}
+          />
+          <div className="invoice-meta">
+            <InvoiceField
+              label="Invoice No."
+              value={invoice.invoice_number}
+              onChange={(value) => update("invoice_number", value)}
+            />
+            <InvoiceField
+              label="Invoice Date"
+              type="date"
+              value={invoice.invoice_date}
+              onChange={(value) => update("invoice_date", value)}
+            />
+            <InvoiceField
+              label="Buyer's Order No."
+              value={invoice.buyer_order}
+              onChange={(value) => update("buyer_order", value)}
+            />
+            <InvoiceField
+              label="Vehicle No."
+              value={invoice.vehicle_number}
+              onChange={(value) => update("vehicle_number", value)}
+            />
+            <InvoiceField
+              label="Place of Supply"
+              value={invoice.place_of_supply}
+              onChange={(value) => update("place_of_supply", value)}
+            />
+            <InvoiceSelect
+              label="Reverse Charge"
+              value={invoice.reverse_charge}
+              options={["No", "Yes"]}
+              onChange={(value) => update("reverse_charge", value)}
+            />
+            <InvoiceField
+              label="Payment Terms"
+              value={invoice.payment_terms}
+              onChange={(value) => update("payment_terms", value)}
+            />
+            <InvoiceSelect
+              label="Copy Type"
+              value={invoice.copy_type}
+              options={["Original", "Duplicate", "Triplicate"]}
+              onChange={(value) => update("copy_type", value)}
+            />
+          </div>
+          <div className="invoice-parties">
+            <InvoiceField
+              label="Bill To"
+              area
+              value={invoice.bill_to}
+              onChange={(value) => update("bill_to", value)}
+            />
+            <InvoiceField
+              label="Ship To"
+              area
+              value={invoice.ship_to}
+              onChange={(value) => update("ship_to", value)}
+            />
+          </div>
+          <div className="invoice-items-wrap">
+            <table className="invoice-items">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Description</th>
+                  <th>HSN/SAC</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>GST %</th>
+                  <th>Total</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {invoice.items.map((item, index) => {
+                  const taxable = Number(item.quantity) * Number(item.rate);
+                  const total = taxable * (1 + Number(item.gst) / 100);
+                  return (
+                    <tr key={item.id}>
+                      <td>{index + 1}</td>
+                      <td>
+                        <textarea
+                          value={item.description}
+                          onChange={(e) =>
+                            updateItem(item.id, "description", e.target.value)
+                          }
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={item.hsn}
+                          onChange={(e) => {
+                            const preset = HSN_PRESETS.find(
+                              ([code]) => code === e.target.value,
+                            );
+                            updateItem(item.id, "hsn", e.target.value);
+                            if (preset) updateItem(item.id, "gst", preset[2]);
+                          }}
+                        >
+                          {HSN_PRESETS.map(([code, label]) => (
+                            <option key={code} value={code}>
+                              {code} - {label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            updateItem(
+                              item.id,
+                              "quantity",
+                              Number(e.target.value),
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.rate}
+                          onChange={(e) =>
+                            updateItem(item.id, "rate", Number(e.target.value))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.gst}
+                          onChange={(e) =>
+                            updateItem(item.id, "gst", Number(e.target.value))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <b>{money(total)}</b>
+                      </td>
+                      <td>
+                        <button
+                          className="row-delete"
+                          onClick={() =>
+                            setInvoice((current) => ({
+                              ...current,
+                              items: current.items.filter(
+                                (row) => row.id !== item.id,
+                              ),
+                            }))
+                          }
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button
+            className="add-item"
+            onClick={() =>
+              setInvoice((current) => ({
+                ...current,
+                items: [...current.items, emptyInvoiceItem()],
+              }))
+            }
+          >
+            <Plus size={14} /> Add line item
+          </button>
+          <div className="invoice-totals">
+            <span>Taxable total</span>
+            <b>{money(totals.taxable)}</b>
+            <span>Total GST</span>
+            <b>{money(totals.gst)}</b>
+            <span>Round off</span>
+            <input
+              type="number"
+              step="0.01"
+              value={invoice.round_off}
+              onChange={(e) => update("round_off", Number(e.target.value))}
+            />
+            <strong>Net amount payable</strong>
+            <strong>{money(net)}</strong>
+          </div>
+          <div className="invoice-parties footer-fields">
+            <InvoiceField
+              label="Bank Details"
+              area
+              value={invoice.bank_details}
+              onChange={(value) => update("bank_details", value)}
+            />
+            <InvoiceField
+              label="Terms and Remarks"
+              area
+              value={invoice.terms}
+              onChange={(value) => update("terms", value)}
+            />
+          </div>
+          <div className="invoice-signatures">
+            <span>Customer Signature</span>
+            <span>For SUNREGA - Authorised Signatory</span>
+          </div>
+        </div>
+        <div className="saved-invoices panel">
+          <h2>Saved invoices</h2>
+          {saved.length ? (
+            saved.map((row) => (
+              <button
+                key={row.id}
+                onClick={() =>
+                  setInvoice({ ...newInvoice(), ...row.data, id: row.id })
+                }
+              >
+                <b>{row.invoice_number}</b>
+                <span>{row.bill_to.split("\n")[0]}</span>
+                <strong>{money(row.total)}</strong>
+              </button>
+            ))
+          ) : (
+            <p className="muted">No invoices saved yet.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceField({ label, value, onChange, area = false, type = "text" }) {
+  return (
+    <label className="invoice-field">
+      <span>{label}</span>
+      {area ? (
+        <textarea
+          rows="4"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </label>
+  );
+}
+function InvoiceSelect({ label, value, options, onChange }) {
+  return (
+    <label className="invoice-field">
+      <span>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function printInvoice(invoice, totals, net) {
+  const itemRows = invoice.items
+    .map((item, index) => {
+      const taxable = Number(item.quantity) * Number(item.rate);
+      const gstAmount = (taxable * Number(item.gst)) / 100;
+      return `<tr><td>${index + 1}</td><td class="left">${htmlEscape(item.description)}</td><td>${htmlEscape(item.hsn)}</td><td>${item.quantity}</td><td>${money(item.rate)}</td><td>${money(taxable)}</td><td>${item.gst}%</td><td>${money(gstAmount)}</td><td>${money(taxable + gstAmount)}</td></tr>`;
+    })
+    .join("");
+  const popup = window.open("", "_blank");
+  if (!popup) {
+    alert("Please allow pop-ups to print invoices.");
+    return;
+  }
+  popup.opener = null;
+  popup.document.write(
+    `<!doctype html><html><head><title>${htmlEscape(invoice.invoice_number)}</title><style>@page{size:A4;margin:9mm}*{box-sizing:border-box}body{font:10px Arial;color:#1f2937;margin:0}.sheet{padding:6px}.logo{display:block;width:210px;margin:0 auto 10px}.title{background:#0b2545;color:#fff;text-align:center;padding:8px;font-size:15px;font-weight:700}.seller{white-space:pre-line;border:1px solid #d7dce3;padding:9px;margin:10px 0}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}.meta div,.party{border:1px solid #d7dce3;padding:6px}.meta b,.head{display:block;color:#0b2545;font-size:8px;text-transform:uppercase;margin-bottom:4px}.parties{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.party{white-space:pre-line;min-height:70px}.head{background:#f26b0f;color:#fff;margin:-6px -6px 6px;padding:5px}table{width:100%;border-collapse:collapse}th{background:#0b2545;color:#fff;padding:5px;font-size:8px}td{border:1px solid #d7dce3;padding:5px;text-align:right}.left{text-align:left}.totals{margin:10px 0 10px auto;width:280px}.totals div{display:flex;justify-content:space-between;padding:4px 8px}.totals .grand{background:#fdebdc;border-top:2px solid #f26b0f;font-size:13px;font-weight:700}.foot{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border:1px solid #d7dce3;white-space:pre-line;min-height:90px;padding:7px}.sign{display:flex;justify-content:space-between;margin-top:50px}.sign span{width:210px;border-top:1px solid;text-align:center;padding-top:5px}.actions{position:fixed;right:15px;top:15px}.actions button{background:#f26b0f;color:#fff;border:0;border-radius:5px;padding:9px 14px;font-weight:700}@media print{.actions{display:none}}</style></head><body><div class="actions"><button onclick="window.print()">Print / Save PDF</button></div><div class="sheet"><img class="logo" src="${new URL(sunregaLogo, window.location.href).href}"><div class="title">${htmlEscape(invoice.title)}</div><div class="seller"><b>FROM (SELLER DETAILS)</b><br>${htmlEscape(invoice.seller_details)}</div><div class="meta"><div><b>Invoice No.</b>${htmlEscape(invoice.invoice_number)}</div><div><b>Invoice Date</b>${htmlEscape(invoice.invoice_date)}</div><div><b>Buyer's Order</b>${htmlEscape(invoice.buyer_order || "-")}</div><div><b>Vehicle No.</b>${htmlEscape(invoice.vehicle_number || "-")}</div><div><b>Place of Supply</b>${htmlEscape(invoice.place_of_supply)}</div><div><b>Reverse Charge</b>${htmlEscape(invoice.reverse_charge)}</div><div><b>Payment Terms</b>${htmlEscape(invoice.payment_terms)}</div><div><b>Copy Type</b>${htmlEscape(invoice.copy_type)}</div></div><div class="parties"><div class="party"><span class="head">Bill To</span>${htmlEscape(invoice.bill_to)}</div><div class="party"><span class="head">Ship To</span>${htmlEscape(invoice.ship_to)}</div></div><table><thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Rate</th><th>Taxable</th><th>GST</th><th>GST Amt</th><th>Total</th></tr></thead><tbody>${itemRows}</tbody></table><div class="totals"><div><span>Taxable Total</span><b>${money(totals.taxable)}</b></div><div><span>Total GST</span><b>${money(totals.gst)}</b></div><div><span>Round Off</span><b>${money(invoice.round_off)}</b></div><div class="grand"><span>Net Amount Payable</span><b>${money(net)}</b></div></div><div class="foot"><div class="box"><b>BANK DETAILS</b><br>${htmlEscape(invoice.bank_details)}</div><div class="box"><b>TERMS AND REMARKS</b><br>${htmlEscape(invoice.terms)}</div></div><div class="sign"><span>Customer Signature</span><span>For SUNREGA - Authorised Signatory</span></div></div></body></html>`,
+  );
+  popup.document.close();
 }
 
 function Kpi({ label, value, note }) {
