@@ -17,3 +17,5 @@ alter table public.quotations add column if not exists basic_inverter_count inte
 alter table public.quotations add column if not exists basic_inverter_kw numeric not null default 0;
 alter table public.quotations add column if not exists premium_inverter_count integer not null default 1;
 alter table public.quotations add column if not exists premium_inverter_kw numeric not null default 0;
+alter table public.quotations add column if not exists plant_type text not null default 'On-Grid';
+alter table public.quotations add column if not exists battery_type text not null default 'No Battery';

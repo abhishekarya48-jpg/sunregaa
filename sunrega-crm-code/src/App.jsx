@@ -763,7 +763,8 @@ const SPECIFICATIONS = [
     "On-Grid String Inverter (Powerone / Eastman / Ksolare)",
     "SolarEdge Inverter with Power Optimizers",
   ],
-  ["System Type", "On-Grid (Grid-tied)", "On-Grid (Grid-tied)"],
+  ["System Type", "On-Grid", "On-Grid"],
+  ["Battery", "No Battery", "No Battery"],
   ["Panel-level Monitoring", "Not Included", "Included (SolarEdge App)"],
   ["Mounting Structure", "GI Structure", "Hot-dip GI Structure (Heavy Duty)"],
   [
@@ -803,6 +804,8 @@ const defaultQuote = () => ({
   basic_inverter_kw: 0,
   premium_inverter_count: 1,
   premium_inverter_kw: 0,
+  plant_type: "On-Grid",
+  battery_type: "No Battery",
   payment_terms:
     "50% advance with work order, 40% before dispatch of material, 10% on commissioning.",
   delivery_terms:
@@ -847,6 +850,8 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
       return packageName === "basic"
         ? `${quote.basic_inverter_count || 0} × ${quote.basic_inverter_kw || 0} kW ${fallback}`
         : `${quote.premium_inverter_count || 0} × ${quote.premium_inverter_kw || 0} kW ${fallback}`;
+    if (name === "System Type") return quote.plant_type || "On-Grid";
+    if (name === "Battery") return quote.battery_type || "No Battery";
     return fallback;
   };
   return (
@@ -900,7 +905,7 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
                 onChange={(e) => set("quotation_date", e.target.value)}
               />
             </label>
-            <label className="wide">
+            <label>
               <span>Plant capacity (kWp)</span>
               <input
                 type="number"
@@ -909,6 +914,40 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
                 value={quote.system_size}
                 onChange={(e) => set("system_size", Number(e.target.value))}
               />
+            </label>
+            <label>
+              <span>Plant type</span>
+              <select
+                value={quote.plant_type}
+                onChange={(e) => {
+                  const plantType = e.target.value;
+                  setQuote((current) => ({
+                    ...current,
+                    plant_type: plantType,
+                    battery_type:
+                      plantType === "On-Grid"
+                        ? "No Battery"
+                        : current.battery_type === "No Battery"
+                          ? "Lithium-ion"
+                          : current.battery_type,
+                  }));
+                }}
+              >
+                <option>On-Grid</option>
+                <option>Hybrid</option>
+                <option>Off-Grid</option>
+              </select>
+            </label>
+            <label className="wide">
+              <span>Battery option</span>
+              <select
+                value={quote.battery_type}
+                onChange={(e) => set("battery_type", e.target.value)}
+              >
+                <option>No Battery</option>
+                <option>Lithium-ion</option>
+                <option>Tubular Battery</option>
+              </select>
             </label>
           </div>
           <h3>Panel and inverter configuration</h3>
@@ -1084,8 +1123,8 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
           <button
             className="print-btn"
             onClick={() => {
-              printQuotation(complete)
-              onSave(complete)
+              printQuotation(complete);
+              onSave(complete);
             }}
           >
             Save & print
@@ -1123,6 +1162,8 @@ function printQuotation(quote) {
       return packageName === "basic"
         ? `${quote.basic_inverter_count || 0} × ${quote.basic_inverter_kw || 0} kW ${fallback}`
         : `${quote.premium_inverter_count || 0} × ${quote.premium_inverter_kw || 0} kW ${fallback}`;
+    if (name === "System Type") return quote.plant_type || "On-Grid";
+    if (name === "Battery") return quote.battery_type || "No Battery";
     return fallback;
   };
   const rows = SPECIFICATIONS.map(
