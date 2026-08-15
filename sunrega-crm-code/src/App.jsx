@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   BriefcaseBusiness,
+  ExternalLink,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -299,6 +300,7 @@ function CRMApp({ profile, onSignOut }) {
             amount: 0,
             paid: false,
           })),
+          documents: [],
           notes: lead.notes || "",
         });
         await refresh();
@@ -1419,6 +1421,7 @@ function ProjectModal({ item, onSave, onDelete, close }) {
     started_at: new Date().toISOString().slice(0, 10),
     target_days: 60,
     service_notes: "",
+    documents: [],
     ...item,
     milestones: initialMilestones,
     payments: initialPayments,
@@ -1451,6 +1454,13 @@ function ProjectModal({ item, onSave, onDelete, close }) {
     setProject((current) => ({
       ...current,
       payments: current.payments.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row,
+      ),
+    }));
+  const updateDocument = (index, key, value) =>
+    setProject((current) => ({
+      ...current,
+      documents: current.documents.map((row, rowIndex) =>
         rowIndex === index ? { ...row, [key]: value } : row,
       ),
     }));
@@ -1594,6 +1604,21 @@ function ProjectModal({ item, onSave, onDelete, close }) {
               <b>{money(Math.max(0, Number(project.value || 0) - received))}</b>
             </span>
           </div>
+          <h3>Project documents</h3>
+          <div className="project-documents">
+            {(project.documents || []).map((document, index) => (
+              <div key={document.id || index}>
+                <input placeholder="Company name" value={document.company || ""} onChange={(event) => updateDocument(index, "company", event.target.value)} />
+                <input placeholder="Document name" value={document.name || ""} onChange={(event) => updateDocument(index, "name", event.target.value)} />
+                <input type="url" placeholder="Google Drive or shared link" value={document.url || ""} onChange={(event) => updateDocument(index, "url", event.target.value)} />
+                {document.url ? <a href={document.url} target="_blank" rel="noreferrer" title="Open document"><ExternalLink size={16} /></a> : <span />}
+                <button type="button" title="Remove document" onClick={() => setProject((current) => ({ ...current, documents: current.documents.filter((_, documentIndex) => documentIndex !== index) }))}><Trash2 size={16} /></button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="add-document" onClick={() => setProject((current) => ({ ...current, documents: [...(current.documents || []), { id: newId(), company: "", name: "", url: "" }] }))}>
+            <Plus size={16} /> Add project document
+          </button>
           <label className="project-notes">
             <span>Service / AMC notes</span>
             <textarea

@@ -8,6 +8,7 @@ alter table public.projects add column if not exists target_days integer not nul
 alter table public.projects add column if not exists milestones jsonb not null default '[]'::jsonb;
 alter table public.projects add column if not exists payments jsonb not null default '[]'::jsonb;
 alter table public.projects add column if not exists service_notes text default '';
+alter table public.projects add column if not exists documents jsonb not null default '[]'::jsonb;
 
 create unique index if not exists projects_lead_id_unique
 on public.projects (lead_id) where lead_id is not null;
