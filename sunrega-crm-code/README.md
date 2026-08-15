@@ -23,7 +23,7 @@ The app works without environment variables in local demo mode. To enable shared
 2. In Supabase **Authentication → Users**, create the first administrator.
 3. Run the final commented `update profiles ...` statement in the migration with that administrator's email.
 4. Deploy the account-creation function with `supabase functions deploy admin-create-user`.
-5. Sign in. Administrators see **User access** and can create admin or worker logins. Workers can use the CRM but cannot manage accounts.
+5. Sign in. Administrators see **User access** and can create admin or worker logins with a worker ID, name, password, phone, designation and department. Workers sign in using their worker ID and can use the CRM but cannot manage accounts.
 
 The Edge Function uses Supabase's built-in service-role secret. Never add that secret to Vercel or the React application.
 

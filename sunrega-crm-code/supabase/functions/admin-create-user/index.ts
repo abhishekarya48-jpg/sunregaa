@@ -22,14 +22,17 @@ Deno.serve(async (request) => {
     const { data: profile } = await adminClient.from('profiles').select('role,is_active').eq('id', user.id).single()
     if (profile?.role !== 'admin' || !profile.is_active) throw new Error('Administrator access required')
 
-    const { fullName, email, password, role = 'worker' } = await request.json()
-    if (!fullName || !email || !password) throw new Error('Name, email and password are required')
+    const { userId, fullName, password, phone = '', designation = '', department = '', role = 'worker' } = await request.json()
+    if (!userId || !fullName || !password) throw new Error('Worker ID, name and password are required')
+    if (!/^[a-zA-Z0-9._-]+$/.test(userId)) throw new Error('Worker ID may only contain letters, numbers, dots, underscores and dashes')
     if (password.length < 8) throw new Error('Password must contain at least 8 characters')
     if (!['admin', 'worker'].includes(role)) throw new Error('Invalid role')
+    const normalizedId = userId.toLowerCase().trim()
+    const email = `${normalizedId}@workers.sunrega.local`
 
     const { data, error } = await adminClient.auth.admin.createUser({
       email: email.toLowerCase().trim(), password, email_confirm: true,
-      user_metadata: { full_name: fullName.trim(), role },
+      user_metadata: { user_id: normalizedId, full_name: fullName.trim(), phone: phone.trim(), designation: designation.trim(), department: department.trim(), role },
     })
     if (error) throw error
     return new Response(JSON.stringify({ user: { id: data.user.id, email: data.user.email } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
