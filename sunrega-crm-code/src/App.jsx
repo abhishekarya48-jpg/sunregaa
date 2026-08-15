@@ -268,10 +268,13 @@ function CRMApp({ profile, onSignOut }) {
     if (!lead || lead.stage === stage) return;
     try {
       await save("leads", { ...lead, stage });
-      if (
-        stage === "Won" &&
-        !data.projects.some((p) => p.lead_id === lead.id)
-      ) {
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+    if (stage === "Won" && !data.projects.some((p) => p.lead_id === lead.id)) {
+      try {
         await save("projects", {
           id: newId(),
           lead_id: lead.id,
@@ -298,11 +301,13 @@ function CRMApp({ profile, onSignOut }) {
           })),
           notes: lead.notes || "",
         });
+        await refresh();
         setView("projects");
+      } catch (err) {
+        setError(
+          `Lead marked Won, but project creation failed: ${err.message}`,
+        );
       }
-      await refresh();
-    } catch (err) {
-      setError(err.message);
     }
   };
 
@@ -1191,10 +1196,7 @@ function Records({ table, rows, onEdit, onStageChange }) {
             onDrop={(event) => {
               event.preventDefault();
               event.currentTarget.classList.remove("drag-over");
-              onStageChange?.(
-                event.dataTransfer.getData("text/lead-id"),
-                stage,
-              );
+              onStageChange?.(event.dataTransfer.getData("text/plain"), stage);
             }}
           >
             <h3>
@@ -1204,15 +1206,18 @@ function Records({ table, rows, onEdit, onStageChange }) {
             {rows
               .filter((r) => r.stage === stage)
               .map((lead) => (
-                <button
+                <div
                   className="lead-card"
                   key={lead.id}
                   draggable
+                  role="button"
+                  tabIndex={0}
                   onDragStart={(event) => {
-                    event.dataTransfer.setData("text/lead-id", lead.id);
+                    event.dataTransfer.setData("text/plain", lead.id);
                     event.dataTransfer.effectAllowed = "move";
                   }}
                   onClick={() => onEdit(lead)}
+                  onKeyDown={(event) => event.key === "Enter" && onEdit(lead)}
                 >
                   <b>{lead.name}</b>
                   <small>
@@ -1220,7 +1225,23 @@ function Records({ table, rows, onEdit, onStageChange }) {
                   </small>
                   <span>{lead.segment}</span>
                   <strong>{money(lead.quote)}</strong>
-                </button>
+                  <label
+                    className="stage-update"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <small>Update stage</small>
+                    <select
+                      value={lead.stage}
+                      onChange={(event) =>
+                        onStageChange?.(lead.id, event.target.value)
+                      }
+                    >
+                      {STAGES.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               ))}
           </div>
         ))}
