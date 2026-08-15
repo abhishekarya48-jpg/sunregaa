@@ -35,6 +35,10 @@ Run `supabase/quotation-migration.sql` once in the Supabase SQL Editor. The quot
 
 Run `supabase/billing-migration.sql` once in the Supabase SQL Editor. Administrators then see a Billing section with GST invoices, HSN/SAC presets, editable line items, automatic tax and net-total calculations, saved invoice history, and print/PDF output. Workers cannot access invoices.
 
+## Lead conversion and project payments
+
+Run `supabase/project-migration.sql` once in the Supabase SQL Editor. Leads can then be dragged between pipeline stages. Dropping a lead in **Won** automatically creates its linked project with contract value, payment received, outstanding balance, payment status, due date, execution progress, and notes.
+
 Never expose a Supabase `service_role` key in this frontend. The included RLS policies are deliberately open for a prototype; add Supabase Auth and organization-scoped policies before a public production launch.
 
 ## Commands

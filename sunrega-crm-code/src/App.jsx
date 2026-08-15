@@ -74,6 +74,15 @@ const fields = {
     ["progress", "Progress (%)", "number"],
     ["target_date", "Target date", "date"],
     ["value", "Contract value", "number"],
+    ["amount_received", "Payment received", "number"],
+    [
+      "payment_status",
+      "Payment status",
+      "select",
+      ["Not received", "Partially received", "Fully received"],
+    ],
+    ["next_payment_date", "Next payment date", "date"],
+    ["payment_notes", "Payment notes", "textarea"],
     ["notes", "Notes", "textarea"],
   ],
   team_members: [
@@ -187,6 +196,16 @@ function CRMApp({ profile, onSignOut }) {
       row[key] =
         type === "number" ? Number(form.get(key) || 0) : form.get(key) || null;
     });
+    if (editor.table === "projects") {
+      const received = Number(row.amount_received || 0);
+      const value = Number(row.value || 0);
+      row.payment_status =
+        received <= 0
+          ? "Not received"
+          : received >= value && value > 0
+            ? "Fully received"
+            : "Partially received";
+    }
     row.id ||= newId();
     try {
       await save(editor.table, row);
@@ -212,6 +231,38 @@ function CRMApp({ profile, onSignOut }) {
     try {
       await save("quotations", { ...record, id: record.id || newId() });
       setEditor(null);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const moveLead = async (leadId, stage) => {
+    const lead = data.leads.find((row) => row.id === leadId);
+    if (!lead || lead.stage === stage) return;
+    try {
+      await save("leads", { ...lead, stage });
+      if (
+        stage === "Won" &&
+        !data.projects.some((p) => p.lead_id === lead.id)
+      ) {
+        await save("projects", {
+          id: newId(),
+          lead_id: lead.id,
+          name: lead.name,
+          location: lead.location || "",
+          segment: lead.segment || "",
+          kw: lead.kw || 0,
+          owner_id: lead.owner_id || null,
+          status: "Planning",
+          progress: 0,
+          value: lead.quote || 0,
+          amount_received: 0,
+          payment_status: "Not received",
+          notes: lead.notes || "",
+        });
+        setView("projects");
+      }
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -388,6 +439,7 @@ function CRMApp({ profile, onSignOut }) {
               table={view}
               rows={filtered}
               onEdit={(item) => setEditor({ table: view, item })}
+              onStageChange={moveLead}
             />
           )}
         </section>
@@ -1046,7 +1098,7 @@ function Empty() {
   );
 }
 
-function Records({ table, rows, onEdit }) {
+function Records({ table, rows, onEdit, onStageChange }) {
   if (!rows.length)
     return (
       <div className="panel">
@@ -1057,7 +1109,25 @@ function Records({ table, rows, onEdit }) {
     return (
       <div className="kanban">
         {STAGES.map((stage) => (
-          <div className="column" key={stage}>
+          <div
+            className="column"
+            key={stage}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.add("drag-over");
+            }}
+            onDragLeave={(event) =>
+              event.currentTarget.classList.remove("drag-over")
+            }
+            onDrop={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.remove("drag-over");
+              onStageChange?.(
+                event.dataTransfer.getData("text/lead-id"),
+                stage,
+              );
+            }}
+          >
             <h3>
               {stage}
               <span>{rows.filter((r) => r.stage === stage).length}</span>
@@ -1068,6 +1138,11 @@ function Records({ table, rows, onEdit }) {
                 <button
                   className="lead-card"
                   key={lead.id}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/lead-id", lead.id);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
                   onClick={() => onEdit(lead)}
                 >
                   <b>{lead.name}</b>
@@ -1094,6 +1169,8 @@ function Records({ table, rows, onEdit }) {
                 <th>Size</th>
                 <th>Progress</th>
                 <th>Value</th>
+                <th>Received</th>
+                <th>Balance</th>
               </>
             ) : table === "team_members" ? (
               <>
@@ -1129,6 +1206,15 @@ function Records({ table, rows, onEdit }) {
                   <td>{r.kw} kW</td>
                   <td>{r.progress}%</td>
                   <td>{money(r.value)}</td>
+                  <td>{money(r.amount_received)}</td>
+                  <td>
+                    {money(
+                      Math.max(
+                        0,
+                        Number(r.value || 0) - Number(r.amount_received || 0),
+                      ),
+                    )}
+                  </td>
                 </>
               ) : table === "team_members" ? (
                 <>
