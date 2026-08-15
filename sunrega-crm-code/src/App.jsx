@@ -1734,6 +1734,37 @@ const SPECIFICATIONS = [
   ["Waterproofing & Insurance", "NA", "Included"],
   ["Installation Warranty", "2 Years", "5 Years"],
 ];
+const PANEL_BRANDS = [
+  "Waaree Energies",
+  "Adani Solar",
+  "Tata Power Solar",
+  "Vikram Solar",
+  "Premier Energies",
+  "Goldi Solar",
+  "RenewSys",
+  "Emmvee",
+  "Loom Solar",
+  "Saatvik Green Energy",
+];
+const INVERTER_BRANDS = [
+  "Sungrow",
+  "Growatt",
+  "Solis",
+  "GoodWe",
+  "Deye",
+  "Fronius",
+  "Luminous",
+  "Microtek",
+  "UTL Solar",
+  "Havells",
+];
+const savedBrands = (key, defaults) => {
+  try {
+    return [...new Set([...defaults, ...JSON.parse(localStorage.getItem(key) || "[]")])];
+  } catch {
+    return defaults;
+  }
+};
 const defaultQuote = () => ({
   customer_name: "",
   quote_number: `SRS/QT/${new Date().getFullYear()}/${String(Date.now()).slice(-4)}`,
@@ -1746,10 +1777,14 @@ const defaultQuote = () => ({
   status: "Draft",
   panel_count: 0,
   panel_wattage: 620,
+  basic_panel_brand: "Premier Energies",
+  premium_panel_brand: "Waaree Energies",
   basic_inverter_count: 1,
   basic_inverter_kw: 0,
+  basic_inverter_brand: "Sungrow",
   premium_inverter_count: 1,
   premium_inverter_kw: 0,
+  premium_inverter_brand: "Deye",
   plant_type: "On-Grid",
   battery_type: "No Battery",
   payment_terms:
@@ -1762,6 +1797,12 @@ const defaultQuote = () => ({
 
 function QuotationModal({ item, leads, onSave, onDelete, close }) {
   const [quote, setQuote] = useState({ ...defaultQuote(), ...item });
+  const [panelBrands, setPanelBrands] = useState(() =>
+    savedBrands("sunrega_panel_brands", PANEL_BRANDS),
+  );
+  const [inverterBrands, setInverterBrands] = useState(() =>
+    savedBrands("sunrega_inverter_brands", INVERTER_BRANDS),
+  );
   const set = (key, value) =>
     setQuote((current) => ({ ...current, [key]: value }));
   const basicBase =
@@ -1788,14 +1829,48 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
         system_size: lead.kw || q.system_size,
       }));
   };
+  const chooseBrand = (type, quoteKey, value) => {
+    if (value !== "__custom__") return set(quoteKey, value);
+    const brand = prompt(`Enter the custom ${type} brand name:`)?.trim();
+    if (!brand) return;
+    const storageKey =
+      type === "solar panel"
+        ? "sunrega_panel_brands"
+        : "sunrega_inverter_brands";
+    const defaults = type === "solar panel" ? PANEL_BRANDS : INVERTER_BRANDS;
+    const updater = type === "solar panel" ? setPanelBrands : setInverterBrands;
+    const current = type === "solar panel" ? panelBrands : inverterBrands;
+    const next = [...new Set([...current, brand])];
+    updater(next);
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(next.filter((name) => !defaults.includes(name))),
+    );
+    set(quoteKey, brand);
+  };
+  const brandOptions = (options) => (
+    <>
+      {options.map((brand) => (
+        <option key={brand} value={brand}>
+          {brand}
+        </option>
+      ))}
+      <option value="__custom__">+ Add custom brand</option>
+    </>
+  );
   const specValue = (name, packageName, fallback) => {
     if (name === "Plant Capacity") return `${quote.system_size || 0} kWp (DC)`;
-    if (name === "Solar Panels")
-      return `${quote.panel_count || 0} × ${quote.panel_wattage || 620} Wp ${fallback}`;
+    if (name === "Solar Panels") {
+      const brand =
+        packageName === "basic"
+          ? quote.basic_panel_brand
+          : quote.premium_panel_brand;
+      return `${quote.panel_count || 0} × ${quote.panel_wattage || 620} Wp ${brand} Topcon Bifacial`;
+    }
     if (name === "Inverter")
       return packageName === "basic"
-        ? `${quote.basic_inverter_count || 0} × ${quote.basic_inverter_kw || 0} kW ${fallback}`
-        : `${quote.premium_inverter_count || 0} × ${quote.premium_inverter_kw || 0} kW ${fallback}`;
+        ? `${quote.basic_inverter_count || 0} × ${quote.basic_inverter_kw || 0} kW ${quote.basic_inverter_brand} ${quote.plant_type} Solar Inverter`
+        : `${quote.premium_inverter_count || 0} × ${quote.premium_inverter_kw || 0} kW ${quote.premium_inverter_brand} ${quote.plant_type} Solar Inverter`;
     if (name === "System Type") return quote.plant_type || "On-Grid";
     if (name === "Battery") return quote.battery_type || "No Battery";
     return fallback;
@@ -1917,6 +1992,32 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
               />
             </label>
             <label>
+              <span>Basic solar panel brand</span>
+              <select
+                value={quote.basic_panel_brand}
+                onChange={(e) =>
+                  chooseBrand("solar panel", "basic_panel_brand", e.target.value)
+                }
+              >
+                {brandOptions(panelBrands)}
+              </select>
+            </label>
+            <label>
+              <span>Premium solar panel brand</span>
+              <select
+                value={quote.premium_panel_brand}
+                onChange={(e) =>
+                  chooseBrand(
+                    "solar panel",
+                    "premium_panel_brand",
+                    e.target.value,
+                  )
+                }
+              >
+                {brandOptions(panelBrands)}
+              </select>
+            </label>
+            <label>
               <span>Basic inverter quantity</span>
               <input
                 type="number"
@@ -1940,6 +2041,21 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
               />
             </label>
             <label>
+              <span>Basic inverter brand</span>
+              <select
+                value={quote.basic_inverter_brand}
+                onChange={(e) =>
+                  chooseBrand(
+                    "solar inverter",
+                    "basic_inverter_brand",
+                    e.target.value,
+                  )
+                }
+              >
+                {brandOptions(inverterBrands)}
+              </select>
+            </label>
+            <label>
               <span>Premium inverter quantity</span>
               <input
                 type="number"
@@ -1949,6 +2065,21 @@ function QuotationModal({ item, leads, onSave, onDelete, close }) {
                   set("premium_inverter_count", Number(e.target.value))
                 }
               />
+            </label>
+            <label>
+              <span>Premium inverter brand</span>
+              <select
+                value={quote.premium_inverter_brand}
+                onChange={(e) =>
+                  chooseBrand(
+                    "solar inverter",
+                    "premium_inverter_brand",
+                    e.target.value,
+                  )
+                }
+              >
+                {brandOptions(inverterBrands)}
+              </select>
             </label>
             <label>
               <span>Premium inverter (kW each)</span>
@@ -2102,12 +2233,17 @@ function printQuotation(quote) {
   );
   const equipmentValue = (name, packageName, fallback) => {
     if (name === "Plant Capacity") return `${capacity} kWp (DC)`;
-    if (name === "Solar Panels")
-      return `${quote.panel_count || 0} × ${quote.panel_wattage || 620} Wp ${fallback}`;
+    if (name === "Solar Panels") {
+      const brand =
+        packageName === "basic"
+          ? quote.basic_panel_brand
+          : quote.premium_panel_brand;
+      return `${quote.panel_count || 0} × ${quote.panel_wattage || 620} Wp ${brand} Topcon Bifacial`;
+    }
     if (name === "Inverter")
       return packageName === "basic"
-        ? `${quote.basic_inverter_count || 0} × ${quote.basic_inverter_kw || 0} kW ${fallback}`
-        : `${quote.premium_inverter_count || 0} × ${quote.premium_inverter_kw || 0} kW ${fallback}`;
+        ? `${quote.basic_inverter_count || 0} × ${quote.basic_inverter_kw || 0} kW ${quote.basic_inverter_brand} ${quote.plant_type} Solar Inverter`
+        : `${quote.premium_inverter_count || 0} × ${quote.premium_inverter_kw || 0} kW ${quote.premium_inverter_brand} ${quote.plant_type} Solar Inverter`;
     if (name === "System Type") return quote.plant_type || "On-Grid";
     if (name === "Battery") return quote.battery_type || "No Battery";
     return fallback;

@@ -19,3 +19,7 @@ alter table public.quotations add column if not exists premium_inverter_count in
 alter table public.quotations add column if not exists premium_inverter_kw numeric not null default 0;
 alter table public.quotations add column if not exists plant_type text not null default 'On-Grid';
 alter table public.quotations add column if not exists battery_type text not null default 'No Battery';
+alter table public.quotations add column if not exists basic_panel_brand text not null default 'Premier Energies';
+alter table public.quotations add column if not exists premium_panel_brand text not null default 'Waaree Energies';
+alter table public.quotations add column if not exists basic_inverter_brand text not null default 'Sungrow';
+alter table public.quotations add column if not exists premium_inverter_brand text not null default 'Deye';
