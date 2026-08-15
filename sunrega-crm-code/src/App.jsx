@@ -1241,6 +1241,16 @@ function Records({ table, rows, onEdit, onStageChange }) {
                       ))}
                     </select>
                   </label>
+                  <button
+                    type="button"
+                    className="manual-update"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(lead);
+                    }}
+                  >
+                    Edit / Manual update
+                  </button>
                 </div>
               ))}
           </div>
