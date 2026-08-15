@@ -35,6 +35,22 @@ const SEGMENTS = [
   "Government",
   "Ground Mounted",
 ];
+const PROJECT_MILESTONES = [
+  "Design & Approval",
+  "Material Procurement",
+  "Civil & Mounting",
+  "Installation",
+  "Testing & Commissioning",
+  "Net Metering",
+  "Handover",
+];
+const PAYMENT_STAGES = [
+  "Advance",
+  "On Material Delivery",
+  "On Installation",
+  "On Commissioning",
+  "Final / Retention",
+];
 const baseNav = [
   ["dashboard", "Dashboard", LayoutDashboard],
   ["leads", "Leads", BarChart3],
@@ -237,6 +253,16 @@ function CRMApp({ profile, onSignOut }) {
     }
   };
 
+  const saveProject = async (record) => {
+    try {
+      await save("projects", { ...record, id: record.id || newId() });
+      setEditor(null);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const moveLead = async (leadId, stage) => {
     const lead = data.leads.find((row) => row.id === leadId);
     if (!lead || lead.stage === stage) return;
@@ -259,6 +285,17 @@ function CRMApp({ profile, onSignOut }) {
           value: lead.quote || 0,
           amount_received: 0,
           payment_status: "Not received",
+          started_at: new Date().toISOString().slice(0, 10),
+          target_days: 60,
+          milestones: PROJECT_MILESTONES.map((name) => ({
+            name,
+            complete: false,
+          })),
+          payments: PAYMENT_STAGES.map((name) => ({
+            name,
+            amount: 0,
+            paid: false,
+          })),
           notes: lead.notes || "",
         });
         setView("projects");
@@ -276,6 +313,21 @@ function CRMApp({ profile, onSignOut }) {
   const wonValue = data.leads
     .filter((lead) => lead.stage === "Won")
     .reduce((sum, lead) => sum + Number(lead.quote || 0), 0);
+  const overdueFollowups = data.leads.filter(
+    (lead) =>
+      lead.follow_up &&
+      lead.follow_up < new Date().toISOString().slice(0, 10) &&
+      !["Won", "Lost"].includes(lead.stage),
+  ).length;
+  const outstandingPayments = data.projects.reduce(
+    (sum, project) =>
+      sum +
+      Math.max(
+        0,
+        Number(project.value || 0) - Number(project.amount_received || 0),
+      ),
+    0,
+  );
 
   return (
     <div className="app-shell">
@@ -373,6 +425,16 @@ function CRMApp({ profile, onSignOut }) {
                   }
                   note="In execution"
                 />
+                <Kpi
+                  label="Outstanding"
+                  value={money(outstandingPayments)}
+                  note="Project collections due"
+                />
+                <Kpi
+                  label="Overdue follow-ups"
+                  value={overdueFollowups}
+                  note="Require attention"
+                />
               </div>
               <div className="dashboard-grid">
                 <div className="panel">
@@ -450,6 +512,13 @@ function CRMApp({ profile, onSignOut }) {
             item={editor.item}
             leads={data.leads}
             onSave={saveQuotation}
+            onDelete={destroy}
+            close={() => setEditor(null)}
+          />
+        ) : editor.table === "projects" ? (
+          <ProjectModal
+            item={editor.item}
+            onSave={saveProject}
             onDelete={destroy}
             close={() => setEditor(null)}
           />
@@ -1168,9 +1237,8 @@ function Records({ table, rows, onEdit, onStageChange }) {
                 <th>Status</th>
                 <th>Size</th>
                 <th>Progress</th>
-                <th>Value</th>
-                <th>Received</th>
-                <th>Balance</th>
+                <th>TAT</th>
+                <th>Payments</th>
               </>
             ) : table === "team_members" ? (
               <>
@@ -1204,16 +1272,42 @@ function Records({ table, rows, onEdit, onStageChange }) {
                     <Badge text={r.status} />
                   </td>
                   <td>{r.kw} kW</td>
-                  <td>{r.progress}%</td>
-                  <td>{money(r.value)}</td>
-                  <td>{money(r.amount_received)}</td>
                   <td>
-                    {money(
-                      Math.max(
-                        0,
-                        Number(r.value || 0) - Number(r.amount_received || 0),
-                      ),
-                    )}
+                    <div className="table-progress">
+                      <i style={{ width: `${r.progress || 0}%` }} />
+                    </div>
+                    <small>
+                      {r.milestones?.filter((m) => m.complete).length || 0}/
+                      {r.milestones?.length || PROJECT_MILESTONES.length}{" "}
+                      milestones
+                    </small>
+                  </td>
+                  <td>
+                    {r.started_at
+                      ? Math.max(
+                          0,
+                          Math.floor(
+                            (Date.now() -
+                              new Date(`${r.started_at}T00:00:00`)) /
+                              86400000,
+                          ),
+                        )
+                      : 0}
+                    d / {r.target_days || 60}d
+                  </td>
+                  <td>
+                    <b>
+                      {money(r.amount_received)} / {money(r.value)}
+                    </b>
+                    <small>
+                      {money(
+                        Math.max(
+                          0,
+                          Number(r.value || 0) - Number(r.amount_received || 0),
+                        ),
+                      )}{" "}
+                      outstanding
+                    </small>
                   </td>
                 </>
               ) : table === "team_members" ? (
@@ -1248,6 +1342,223 @@ function Records({ table, rows, onEdit, onStageChange }) {
 }
 function Badge({ text }) {
   return <span className="badge">{text}</span>;
+}
+
+function ProjectModal({ item, onSave, onDelete, close }) {
+  const initialMilestones = item.milestones?.length
+    ? item.milestones
+    : PROJECT_MILESTONES.map((name) => ({ name, complete: false }));
+  const initialPayments = item.payments?.length
+    ? item.payments
+    : PAYMENT_STAGES.map((name) => ({ name, amount: 0, paid: false }));
+  const [project, setProject] = useState({
+    status: "Planning",
+    progress: 0,
+    value: 0,
+    started_at: new Date().toISOString().slice(0, 10),
+    target_days: 60,
+    service_notes: "",
+    ...item,
+    milestones: initialMilestones,
+    payments: initialPayments,
+  });
+  const received = project.payments.reduce(
+    (sum, payment) => sum + (payment.paid ? Number(payment.amount || 0) : 0),
+    0,
+  );
+  const completed = project.milestones.filter(
+    (milestone) => milestone.complete,
+  ).length;
+  const progress =
+    Math.round((completed / project.milestones.length) * 100) || 0;
+  const elapsed = project.started_at
+    ? Math.max(
+        0,
+        Math.floor(
+          (Date.now() - new Date(`${project.started_at}T00:00:00`)) / 86400000,
+        ),
+      )
+    : 0;
+  const updateMilestone = (index, complete) =>
+    setProject((current) => ({
+      ...current,
+      milestones: current.milestones.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, complete } : row,
+      ),
+    }));
+  const updatePayment = (index, key, value) =>
+    setProject((current) => ({
+      ...current,
+      payments: current.payments.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row,
+      ),
+    }));
+  const submitProject = () =>
+    onSave({
+      ...project,
+      progress,
+      amount_received: received,
+      payment_status:
+        received <= 0
+          ? "Not received"
+          : received >= Number(project.value || 0)
+            ? "Fully received"
+            : "Partially received",
+      status: progress === 100 ? "Complete" : project.status,
+    });
+  return (
+    <div className="overlay project-overlay">
+      <div className="modal project-modal">
+        <div className="modal-head">
+          <div>
+            <small>PROJECT EXECUTION</small>
+            <h2>{project.name || "New project"}</h2>
+            <p>
+              {project.segment || "Solar project"} · {project.kw || 0} kW ·{" "}
+              {project.location || "No location"}
+            </p>
+          </div>
+          <button onClick={close}>
+            <X />
+          </button>
+        </div>
+        <div className="project-body">
+          <div className="project-summary">
+            <div>
+              <span style={{ width: `${progress}%` }} />
+            </div>
+            <p>
+              <b>{progress}% complete</b> · Day {elapsed} of{" "}
+              {project.target_days || 60} target TAT
+            </p>
+          </div>
+          <div className="project-core">
+            <InvoiceField
+              label="Project name"
+              value={project.name || ""}
+              onChange={(value) => setProject((p) => ({ ...p, name: value }))}
+            />
+            <InvoiceField
+              label="Location"
+              value={project.location || ""}
+              onChange={(value) =>
+                setProject((p) => ({ ...p, location: value }))
+              }
+            />
+            <InvoiceField
+              label="Capacity (kW)"
+              type="number"
+              value={project.kw || 0}
+              onChange={(value) =>
+                setProject((p) => ({ ...p, kw: Number(value) }))
+              }
+            />
+            <InvoiceField
+              label="Contract value"
+              type="number"
+              value={project.value || 0}
+              onChange={(value) =>
+                setProject((p) => ({ ...p, value: Number(value) }))
+              }
+            />
+            <InvoiceField
+              label="Start date"
+              type="date"
+              value={project.started_at || ""}
+              onChange={(value) =>
+                setProject((p) => ({ ...p, started_at: value }))
+              }
+            />
+            <InvoiceField
+              label="Target days"
+              type="number"
+              value={project.target_days || 60}
+              onChange={(value) =>
+                setProject((p) => ({ ...p, target_days: Number(value) }))
+              }
+            />
+          </div>
+          <h3>Execution milestones</h3>
+          <div className="milestone-list">
+            {project.milestones.map((milestone, index) => (
+              <label key={milestone.name}>
+                <input
+                  type="checkbox"
+                  checked={milestone.complete}
+                  onChange={(event) =>
+                    updateMilestone(index, event.target.checked)
+                  }
+                />
+                <span className={milestone.complete ? "done" : ""}>
+                  {milestone.name}
+                </span>
+              </label>
+            ))}
+          </div>
+          <h3>Payment schedule</h3>
+          <div className="payment-schedule">
+            {project.payments.map((payment, index) => (
+              <div key={payment.name}>
+                <b>{payment.name}</b>
+                <input
+                  type="number"
+                  min="0"
+                  value={payment.amount}
+                  onChange={(event) =>
+                    updatePayment(index, "amount", Number(event.target.value))
+                  }
+                />
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={payment.paid}
+                    onChange={(event) =>
+                      updatePayment(index, "paid", event.target.checked)
+                    }
+                  />{" "}
+                  Paid
+                </label>
+              </div>
+            ))}
+          </div>
+          <div className="collection-summary">
+            <span>
+              Contract value <b>{money(project.value)}</b>
+            </span>
+            <span>
+              Received <b>{money(received)}</b>
+            </span>
+            <span>
+              Outstanding{" "}
+              <b>{money(Math.max(0, Number(project.value || 0) - received))}</b>
+            </span>
+          </div>
+          <label className="project-notes">
+            <span>Service / AMC notes</span>
+            <textarea
+              rows="4"
+              value={project.service_notes || ""}
+              onChange={(event) =>
+                setProject((p) => ({ ...p, service_notes: event.target.value }))
+              }
+            />
+          </label>
+        </div>
+        <div className="modal-actions">
+          {item.id && (
+            <button className="danger" onClick={onDelete}>
+              <Trash2 size={16} /> Delete project
+            </button>
+          )}
+          <span />
+          <button onClick={close}>Cancel</button>
+          <button className="primary" onClick={submitProject}>
+            Save project
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const SPECIFICATIONS = [
