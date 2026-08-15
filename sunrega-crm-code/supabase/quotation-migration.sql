@@ -11,3 +11,9 @@ alter table public.quotations add column if not exists premium_total numeric not
 alter table public.quotations add column if not exists payment_terms text default '';
 alter table public.quotations add column if not exists delivery_terms text default '';
 alter table public.quotations add column if not exists exclusions text default '';
+alter table public.quotations add column if not exists panel_count integer not null default 0;
+alter table public.quotations add column if not exists panel_wattage numeric not null default 620;
+alter table public.quotations add column if not exists basic_inverter_count integer not null default 1;
+alter table public.quotations add column if not exists basic_inverter_kw numeric not null default 0;
+alter table public.quotations add column if not exists premium_inverter_count integer not null default 1;
+alter table public.quotations add column if not exists premium_inverter_kw numeric not null default 0;
