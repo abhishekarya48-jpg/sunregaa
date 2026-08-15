@@ -652,6 +652,25 @@ function UserManagement() {
     }
     setBusy(false);
   };
+  const deleteUser = async (user) => {
+    if (
+      !confirm(
+        `Permanently delete ${user.full_name || user.email}? This login will stop working immediately.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setMessage("");
+    const { error } = await supabase.functions.invoke("admin-delete-user", {
+      body: { userId: user.id },
+    });
+    if (error) setMessage(error.message);
+    else {
+      setMessage("User deleted successfully.");
+      await loadUsers();
+    }
+    setBusy(false);
+  };
   return (
     <div className="users-grid">
       <form className="panel create-user" onSubmit={createUser}>
@@ -714,6 +733,7 @@ function UserManagement() {
               <th>Department</th>
               <th>Role</th>
               <th>Status</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -730,6 +750,16 @@ function UserManagement() {
                   <Badge text={user.role} />
                 </td>
                 <td>{user.is_active ? "Active" : "Disabled"}</td>
+                <td>
+                  <button
+                    className="delete-user-btn"
+                    disabled={busy}
+                    onClick={() => deleteUser(user)}
+                    title="Delete this user"
+                  >
+                    <Trash2 size={15} /> Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
