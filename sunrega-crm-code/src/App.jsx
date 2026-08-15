@@ -62,6 +62,14 @@ const baseNav = [
 ];
 const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 const newId = () => crypto.randomUUID();
+const functionErrorMessage = async (error) => {
+  try {
+    const payload = await error?.context?.json();
+    return payload?.error || payload?.message || error.message;
+  } catch {
+    return error?.message || "The server request failed.";
+  }
+};
 
 const fields = {
   leads: [
@@ -624,7 +632,7 @@ function UserManagement() {
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) setMessage(error.message);
+    if (error) setMessage(await functionErrorMessage(error));
     else setUsers(data || []);
   };
   useEffect(() => {
@@ -646,7 +654,7 @@ function UserManagement() {
         role: form.get("role"),
       },
     });
-    if (error) setMessage(error.message);
+    if (error) setMessage(await functionErrorMessage(error));
     else {
       setMessage("User created successfully.");
       event.currentTarget.reset();
@@ -666,7 +674,7 @@ function UserManagement() {
     const { error } = await supabase.functions.invoke("admin-delete-user", {
       body: { userId: user.id },
     });
-    if (error) setMessage(error.message);
+    if (error) setMessage(await functionErrorMessage(error));
     else {
       setMessage("User deleted successfully.");
       await loadUsers();
