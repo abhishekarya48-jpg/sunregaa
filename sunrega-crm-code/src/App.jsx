@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, BriefcaseBusiness, FileText, LayoutDashboard, Plus, Search, Settings, Sun, Trash2, Users, X, Zap } from 'lucide-react'
+import { BarChart3, BriefcaseBusiness, FileText, LayoutDashboard, Plus, Search, Settings, Trash2, Users, X, Zap } from 'lucide-react'
 import { isSupabaseConfigured } from './lib/supabase'
 import { list, remove, save, subscribe, TABLES } from './lib/database'
+import sunregaLogo from './assets/sunrega-logo.png'
 
 const STAGES = ['New', 'Contacted', 'Survey Scheduled', 'Quotation Sent', 'Negotiation', 'Won', 'Lost']
 const SEGMENTS = ['Residential Rooftop', 'Commercial Rooftop', 'Industrial', 'Government', 'Ground Mounted']
@@ -76,7 +77,7 @@ function App() {
 
   return <div className="app-shell">
     <aside>
-      <div className="brand"><span><Sun size={24} /></span><div>SUNREGA<small>SOLAR CRM</small></div></div>
+      <div className="brand"><img src={sunregaLogo} alt="Sunrega — Powering a sustainable tomorrow" /></div>
       <nav>{nav.map(([id, label, Icon]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon size={18} />{label}</button>)}</nav>
       <div className="sync"><i className={isSupabaseConfigured ? 'online' : ''} />{isSupabaseConfigured ? 'Supabase connected' : 'Local demo mode'}<small>{isSupabaseConfigured ? 'Live team sync enabled' : 'Add environment keys to connect'}</small></div>
     </aside>
