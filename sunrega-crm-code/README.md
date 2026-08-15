@@ -27,6 +27,10 @@ The app works without environment variables in local demo mode. To enable shared
 
 The Edge Function uses Supabase's built-in service-role secret. Never add that secret to Vercel or the React application.
 
+## Quotation maker
+
+Run `supabase/quotation-migration.sql` once in the Supabase SQL Editor. The quotation screen then calculates Basic and Premium package prices from plant capacity and per-kW rates, calculates GST and totals automatically, saves every quotation to Supabase, and creates a two-page print/PDF layout based on the Sunrega quotation format.
+
 Never expose a Supabase `service_role` key in this frontend. The included RLS policies are deliberately open for a prototype; add Supabase Auth and organization-scoped policies before a public production launch.
 
 ## Commands

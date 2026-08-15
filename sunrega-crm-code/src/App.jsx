@@ -27,7 +27,7 @@ const fields = {
     ['progress', 'Progress (%)', 'number'], ['target_date', 'Target date', 'date'], ['value', 'Contract value', 'number'], ['notes', 'Notes', 'textarea'],
   ],
   team_members: [['name', 'Full name', 'text'], ['role', 'Role', 'text'], ['phone', 'Phone', 'tel'], ['email', 'Email', 'email']],
-  quotations: [['customer_name', 'Customer', 'text'], ['quote_number', 'Quote number', 'text'], ['system_size', 'System size (kW)', 'number'], ['amount', 'Amount', 'number'], ['status', 'Status', 'select', ['Draft', 'Sent', 'Accepted', 'Rejected']], ['valid_until', 'Valid until', 'date'], ['notes', 'Notes', 'textarea']],
+  quotations: [],
 }
 
 function App() {
@@ -98,6 +98,14 @@ function CRMApp({ profile, onSignOut }) {
     try { await remove(editor.table, editor.item.id); setEditor(null); await refresh() } catch (err) { setError(err.message) }
   }
 
+  const saveQuotation = async (record, shouldPrint = false) => {
+    try {
+      const saved = await save('quotations', { ...record, id: record.id || newId() })
+      setEditor(null); await refresh()
+      if (shouldPrint) printQuotation(saved)
+    } catch (err) { setError(err.message) }
+  }
+
   const leadsValue = data.leads.reduce((sum, lead) => sum + Number(lead.quote || 0), 0)
   const wonValue = data.leads.filter((lead) => lead.stage === 'Won').reduce((sum, lead) => sum + Number(lead.quote || 0), 0)
 
@@ -126,7 +134,9 @@ function CRMApp({ profile, onSignOut }) {
         </> : view === 'settings' ? <SettingsView /> : view === 'users' && profile?.role === 'admin' ? <UserManagement /> : <Records table={view} rows={filtered} onEdit={(item) => setEditor({ table: view, item })} />}
       </section>
     </main>
-    {editor && <Modal editor={editor} submit={submit} destroy={destroy} close={() => setEditor(null)} />}
+    {editor && (editor.table === 'quotations'
+      ? <QuotationModal item={editor.item} leads={data.leads} onSave={saveQuotation} onDelete={destroy} close={() => setEditor(null)} />
+      : <Modal editor={editor} submit={submit} destroy={destroy} close={() => setEditor(null)} />)}
   </div>
 }
 
@@ -175,6 +185,64 @@ function Records({ table, rows, onEdit }) {
   return <div className="panel table-wrap"><table><thead><tr>{table === 'projects' ? <><th>Project</th><th>Status</th><th>Size</th><th>Progress</th><th>Value</th></> : table === 'team_members' ? <><th>Name</th><th>Role</th><th>Phone</th><th>Email</th></> : <><th>Quote</th><th>Customer</th><th>Status</th><th>Size</th><th>Amount</th></>}<th /></tr></thead><tbody>{rows.map((r) => <tr key={r.id} onClick={() => onEdit(r)}>{table === 'projects' ? <><td><b>{r.name}</b><small>{r.location}</small></td><td><Badge text={r.status} /></td><td>{r.kw} kW</td><td>{r.progress}%</td><td>{money(r.value)}</td></> : table === 'team_members' ? <><td><b>{r.name}</b></td><td>{r.role}</td><td>{r.phone || '—'}</td><td>{r.email || '—'}</td></> : <><td><b>{r.quote_number}</b></td><td>{r.customer_name}</td><td><Badge text={r.status} /></td><td>{r.system_size} kW</td><td>{money(r.amount)}</td></>}<td>›</td></tr>)}</tbody></table></div>
 }
 function Badge({ text }) { return <span className="badge">{text}</span> }
+
+const SPECIFICATIONS = [
+  ['Plant Capacity', 'Automatically set from capacity', 'Automatically set from capacity'],
+  ['Solar Panels', '625 Wp Topcon Bifacial (Premier / Eastman / Satvik)', '625 Wp Topcon Bifacial (Waaree / Luminous / Adani / Polycab)'],
+  ['Inverter', 'On-Grid String Inverter (Powerone / Eastman / Ksolare)', 'SolarEdge Inverter with Power Optimizers'],
+  ['System Type', 'On-Grid (Grid-tied)', 'On-Grid (Grid-tied)'],
+  ['Panel-level Monitoring', 'Not Included', 'Included (SolarEdge App)'],
+  ['Mounting Structure', 'GI Structure', 'Hot-dip GI Structure (Heavy Duty)'],
+  ['DC/AC Cabling & Accessories', 'Standard Grade', 'Premium Grade, UV Resistant'],
+  ['Net-Metering Assistance', 'Included', 'Included'],
+  ['Inverter Warranty', '5 Years', '8 Years (Extendable to 20/25)'],
+  ['Panel Warranty', '12 Years Product / 25 Years Performance', '12 Years Product / 25 Years Performance'],
+  ['Chemical Earthing', '2 meter Copper Bonded Standard', '3 meter Copper Bonded (True Power)'],
+  ['Anchoring', 'Standard Anchoring', 'Chemical Anchoring'],
+  ['Waterproofing & Insurance', 'NA', 'Included'],
+  ['Installation Warranty', '2 Years', '5 Years'],
+]
+const defaultQuote = () => ({
+  customer_name: '', quote_number: `SRS/QT/${new Date().getFullYear()}/${String(Date.now()).slice(-4)}`,
+  quotation_date: new Date().toISOString().slice(0, 10), system_size: 0, basic_rate: 34000,
+  premium_rate: 39000, gst_rate: 8.9, validity_days: 15, status: 'Draft',
+  payment_terms: '50% advance with work order, 40% before dispatch of material, 10% on commissioning.',
+  delivery_terms: '3-4 weeks from receipt of advance payment and site clearance, subject to material availability.',
+  exclusions: 'Civil work, roof reinforcement (if required), and additional cabling beyond standard scope shall be charged extra on actuals.',
+})
+
+function QuotationModal({ item, leads, onSave, onDelete, close }) {
+  const [quote, setQuote] = useState({ ...defaultQuote(), ...item })
+  const set = (key, value) => setQuote((current) => ({ ...current, [key]: value }))
+  const basicBase = Number(quote.system_size || 0) * Number(quote.basic_rate || 0)
+  const premiumBase = Number(quote.system_size || 0) * Number(quote.premium_rate || 0)
+  const basicGst = basicBase * Number(quote.gst_rate || 0) / 100
+  const premiumGst = premiumBase * Number(quote.gst_rate || 0) / 100
+  const complete = { ...quote, amount: Math.round(premiumBase + premiumGst), basic_total: Math.round(basicBase + basicGst), premium_total: Math.round(premiumBase + premiumGst), basic_gst: Math.round(basicGst), premium_gst: Math.round(premiumGst) }
+  const chooseLead = (id) => { const lead = leads.find((row) => row.id === id); if (lead) setQuote((q) => ({ ...q, lead_id: id, customer_name: lead.name, system_size: lead.kw || q.system_size })) }
+  return <div className="overlay quote-overlay"><div className="modal quote-modal"><div className="modal-head"><div><small>{item.id ? 'EDIT QUOTATION' : 'NEW QUOTATION'}</small><h2>{quote.quote_number}</h2></div><button onClick={close}><X /></button></div><div className="quote-form"><div className="quote-fields"><label><span>Link to lead (optional)</span><select value={quote.lead_id || ''} onChange={(e) => chooseLead(e.target.value)}><option value="">Manual entry</option>{leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.name}</option>)}</select></label><label><span>Reference number</span><input value={quote.quote_number} onChange={(e) => set('quote_number', e.target.value)} /></label><label><span>Customer name</span><input value={quote.customer_name} onChange={(e) => set('customer_name', e.target.value)} required /></label><label><span>Quotation date</span><input type="date" value={quote.quotation_date} onChange={(e) => set('quotation_date', e.target.value)} /></label><label className="wide"><span>Plant capacity (kWp)</span><input type="number" min="0" step="0.1" value={quote.system_size} onChange={(e) => set('system_size', Number(e.target.value))} /></label></div><h3>Technical specification - Basic vs Premium</h3><div className="spec-table"><div><b>Specification</b><b>Basic package</b><b>Premium package</b></div>{SPECIFICATIONS.map(([name, basic, premium]) => <div key={name}><strong>{name}</strong><span>{name === 'Plant Capacity' ? `${quote.system_size || 0} kWp (DC)` : basic}</span><span>{name === 'Plant Capacity' ? `${quote.system_size || 0} kWp (DC)` : premium}</span></div>)}</div><h3>Automatic pricing</h3><div className="quote-fields"><label><span>Basic rate per kW</span><input type="number" value={quote.basic_rate} onChange={(e) => set('basic_rate', Number(e.target.value))} /></label><label><span>Premium rate per kW</span><input type="number" value={quote.premium_rate} onChange={(e) => set('premium_rate', Number(e.target.value))} /></label><label><span>GST %</span><input type="number" step="0.1" value={quote.gst_rate} onChange={(e) => set('gst_rate', Number(e.target.value))} /></label><label><span>Validity (days)</span><input type="number" value={quote.validity_days} onChange={(e) => set('validity_days', Number(e.target.value))} /></label></div><div className="price-summary"><div><span>Basic base</span><b>{money(basicBase)}</b><small>GST {money(basicGst)}</small><strong>{money(basicBase + basicGst)}</strong></div><div className="premium"><span>Premium base</span><b>{money(premiumBase)}</b><small>GST {money(premiumGst)}</small><strong>{money(premiumBase + premiumGst)}</strong></div></div><div className="quote-fields terms"><label className="wide"><span>Payment terms</span><textarea rows="2" value={quote.payment_terms} onChange={(e) => set('payment_terms', e.target.value)} /></label><label className="wide"><span>Delivery & installation</span><textarea rows="2" value={quote.delivery_terms} onChange={(e) => set('delivery_terms', e.target.value)} /></label><label className="wide"><span>Exclusions</span><textarea rows="2" value={quote.exclusions} onChange={(e) => set('exclusions', e.target.value)} /></label></div></div><div className="modal-actions">{item.id && <button className="danger" onClick={onDelete}><Trash2 size={16} /> Delete</button>}<span /><button onClick={close}>Cancel</button><button className="primary" onClick={() => onSave(complete)}>Save quotation</button><button className="print-btn" onClick={() => onSave(complete, true)}>Save & print</button></div></div></div>
+}
+
+const htmlEscape = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character])
+function printQuotation(quote) {
+  const capacity = Number(quote.system_size || 0)
+  const basicBase = capacity * Number(quote.basic_rate || 0)
+  const premiumBase = capacity * Number(quote.premium_rate || 0)
+  const gstRate = Number(quote.gst_rate || 0)
+  const basicGst = basicBase * gstRate / 100
+  const premiumGst = premiumBase * gstRate / 100
+  const date = new Date(`${quote.quotation_date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const rows = SPECIFICATIONS.map(([name, basic, premium]) => `<tr><th>${htmlEscape(name)}</th><td>${htmlEscape(name === 'Plant Capacity' ? `${capacity} kWp (DC)` : basic)}</td><td>${htmlEscape(name === 'Plant Capacity' ? `${capacity} kWp (DC)` : premium)}</td></tr>`).join('')
+  const popup = window.open('', '_blank')
+  if (!popup) { alert('Please allow pop-ups to print the quotation.'); return }
+  popup.opener = null
+  popup.document.write(`<!doctype html><html><head><title>${htmlEscape(quote.quote_number)}</title><style>
+    @page{size:A4;margin:14mm 16mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#101f39;margin:0;font-size:10.5px;line-height:1.35}.page{min-height:267mm;position:relative;padding-bottom:18mm;page-break-after:always}.page:last-child{page-break-after:auto}.logo{width:190px;height:auto;margin-bottom:8px}.orange-line{border-top:2px solid #f46a1f;margin-bottom:16px}.title{background:#0d1f3d;color:#fff;font-size:19px;font-weight:700;padding:3px 10px}.meta{display:flex;justify-content:space-between;color:#666;margin:7px 2px 20px}.subject{font-style:italic}.section{font-size:15px;border-bottom:1px solid #f46a1f;padding-bottom:6px;margin:18px 0 10px}table{border-collapse:collapse;width:100%;font-size:9.5px;color:#111}th,td{border:1px solid #111;padding:7px;text-align:center;vertical-align:middle}thead th{background:#f56b20;color:#fff;font-size:10px}thead th:first-child{background:#0d1f3d;text-align:left}tbody th{background:#f0f0f0;text-align:left;width:36%}.pricing td,.pricing th{text-align:right;font-size:11px}.pricing th:first-child{text-align:left}.pricing .total>*{background:#fff0e3;font-weight:700}.note{font-style:italic;color:#666;margin-top:9px}ul{padding-left:20px}li{margin:6px 0}.signature{margin-top:18px}.footer{position:absolute;bottom:0;width:100%;border-top:2px solid #0d1f3d;padding-top:7px;text-align:center;color:#666;font-size:8px}.footer b{color:#0d1f3d}.footer em{display:block;margin-top:3px}.terms-list b{color:#0d1f3d}.intro{font-size:11px}.print-actions{position:fixed;right:18px;top:18px;z-index:5}.print-actions button{background:#f4a900;border:0;border-radius:6px;padding:10px 16px;font-weight:700;cursor:pointer}@media print{.print-actions{display:none}}
+  </style></head><body><div class="print-actions"><button onclick="window.print()">Print / Save PDF</button></div>
+  <section class="page"><img class="logo" src="${new URL(sunregaLogo, window.location.href).href}" alt="Sunrega"><div class="orange-line"></div><div class="title">QUOTATION</div><div class="meta"><span>Ref: ${htmlEscape(quote.quote_number)}</span><span>Date: ${date}</span></div><div class="intro"><p>To,<br><b>${htmlEscape(quote.customer_name)}</b></p><p class="subject">Subject: Quotation for Installation of ${capacity} kWp On-Grid Rooftop Solar Power Plant</p><p>Dear ${htmlEscape(quote.customer_name)},</p><p>Thank you for your interest in Sunrega Solar. We are pleased to submit our quotation for a ${capacity} kWp on-grid rooftop solar power plant, offered in Basic and Premium configurations so you can choose the option that best fits your requirements and budget.</p></div><h2 class="section">1. Technical Specification Comparison</h2><table><thead><tr><th>Specification</th><th>Basic Package</th><th>Premium Package</th></tr></thead><tbody>${rows}</tbody></table><div class="footer"><b>Sunrega Solar</b> &nbsp; | &nbsp; 9646367806 &nbsp; | &nbsp; sunregaenergy@gmail.com &nbsp; | &nbsp; www.sunrega.in<em>This is a computer-generated quotation and is valid for ${quote.validity_days} days from the date of issue.</em></div></section>
+  <section class="page"><img class="logo" src="${new URL(sunregaLogo, window.location.href).href}" alt="Sunrega"><div class="orange-line"></div><h2 class="section">2. Package Pricing</h2><table class="pricing"><thead><tr><th>Pricing</th><th>Basic Package</th><th>Premium Package</th></tr></thead><tbody><tr><th>System Base Price (${money(quote.basic_rate)}/kW Basic, ${money(quote.premium_rate)}/kW Premium)</th><td>${money(basicBase)}</td><td>${money(premiumBase)}</td></tr><tr><th>GST @ ${gstRate}%</th><td>${money(basicGst)}</td><td>${money(premiumGst)}</td></tr><tr class="total"><th>Total Project Cost</th><td>${money(basicBase + basicGst)}</td><td>${money(premiumBase + premiumGst)}</td></tr></tbody></table><p class="note">Note: Prices are indicative, exclusive of any government subsidy that may separately apply, and subject to final site survey.</p><h2 class="section">3. Why Choose Premium (SolarEdge)</h2><ul><li>Panel-level power optimizers maximize generation under partial shading or panel mismatch.</li><li>Module-level monitoring through the SolarEdge app.</li><li>Longer inverter and installation warranty.</li><li>Improved safety with automatic rapid shutdown at panel level.</li></ul><h2 class="section">4. Scope of Work</h2><ul><li>Supply of solar panels, inverter, mounting structure, cabling and balance-of-system components.</li><li>Installation and commissioning of the rooftop solar plant.</li><li>Documentation support for net-metering approval with the DISCOM.</li><li>Testing, handover and system-operation training.</li></ul><h2 class="section">5. Commercial Terms</h2><ul class="terms-list"><li><b>Payment:</b> ${htmlEscape(quote.payment_terms)}</li><li><b>Delivery & Installation:</b> ${htmlEscape(quote.delivery_terms)}</li><li><b>Validity:</b> ${quote.validity_days} days from date of issue.</li><li><b>Exclusions:</b> ${htmlEscape(quote.exclusions)}</li></ul><p>We look forward to your confirmation and would be happy to arrange a free site visit to finalize the layout.</p><div class="signature">For Sunrega Solar<br><br><br><b>Authorized Signatory</b></div><div class="footer"><b>Sunrega Solar</b> &nbsp; | &nbsp; 9646367806 &nbsp; | &nbsp; sunregaenergy@gmail.com &nbsp; | &nbsp; www.sunrega.in<em>This is a computer-generated quotation and is valid for ${quote.validity_days} days from the date of issue.</em></div></section></body></html>`)
+  popup.document.close()
+}
 
 function Modal({ editor, submit, destroy, close }) {
   const isEdit = Boolean(editor.item.id)
