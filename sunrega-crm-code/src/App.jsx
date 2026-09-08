@@ -6,18 +6,23 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  Package,
   Plus,
   ReceiptIndianRupee,
   Search,
   Settings,
   ShieldCheck,
   Trash2,
+  UserCheck,
   Users,
   X,
   Zap,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { list, remove, save, subscribe, TABLES } from "./lib/database";
+import { fetchUserPermissions } from "./lib/operationsApi";
+import OperationsHub from "./components/OperationsHub";
+import EmployeeAccess from "./components/EmployeeAccess";
 import sunregaLogo from "./assets/sunrega-logo.png";
 
 const STAGES = [
@@ -175,15 +180,29 @@ function CRMApp({ profile, onSignOut }) {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState(null);
-  const appNav =
-    profile?.role === "admin"
-      ? [
-          ...baseNav.slice(0, 5),
-          ["billing", "Billing", ReceiptIndianRupee],
-          ["users", "User access", ShieldCheck],
-          baseNav[5],
-        ]
-      : baseNav;
+  const [permissions, setPermissions] = useState([]);
+
+  useEffect(() => {
+    if (profile?.id) {
+      fetchUserPermissions(profile.id).then(setPermissions).catch(() => setPermissions([]));
+    }
+  }, [profile]);
+
+  const hasOpsAccess = profile?.role === "admin" || permissions.some((p) => p.startsWith("operations"));
+
+  const appNav = useMemo(() => {
+    const nav = [...baseNav.slice(0, 5)];
+    if (hasOpsAccess) {
+      nav.push(["operations", "Operations", Package]);
+    }
+    if (profile?.role === "admin") {
+      nav.push(["billing", "Billing", ReceiptIndianRupee]);
+      nav.push(["users", "User access", ShieldCheck]);
+      nav.push(["employee_access", "Employee Access", UserCheck]);
+    }
+    nav.push(baseNav[5]);
+    return nav;
+  }, [profile, hasOpsAccess, permissions]);
 
   const refresh = async () => {
     try {
@@ -525,6 +544,10 @@ function CRMApp({ profile, onSignOut }) {
             <Billing />
           ) : view === "users" && profile?.role === "admin" ? (
             <UserManagement />
+          ) : view === "employee_access" && profile?.role === "admin" ? (
+            <EmployeeAccess />
+          ) : view === "operations" && hasOpsAccess ? (
+            <OperationsHub profile={profile} permissions={permissions} />
           ) : (
             <Records
               table={view}

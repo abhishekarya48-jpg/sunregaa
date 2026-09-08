@@ -14,3 +14,25 @@
 .manual-update{width:100%;margin-top:8px;border:1px solid #d7dde5;background:#f7f9fb;color:var(--navy);border-radius:6px;padding:7px;font-size:11px;font-weight:700;cursor:pointer}.manual-update:hover{background:#fff4d5;border-color:var(--gold)}
 .delete-user-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid #f0c2bf;background:#fff7f6;color:#b63831;border-radius:6px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer}.delete-user-btn:hover{background:#ffebe9}.delete-user-btn:disabled{opacity:.5;cursor:not-allowed}
 .project-overlay{align-items:start;overflow:auto}.project-modal{width:min(820px,94vw);max-height:none;margin:22px 0}.modal-head p{margin:4px 0 0;color:var(--muted);font-size:12px}.project-body{padding:22px 26px}.project-summary>div,.table-progress{height:7px;background:#edf0f3;border-radius:5px;overflow:hidden}.project-summary>div span,.table-progress i{display:block;height:100%;background:linear-gradient(90deg,#cf8514,#f3ae39)}.project-summary p{color:var(--muted);margin:7px 0 20px}.project-core{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.project-body>h3{font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#596577;margin:23px 0 10px}.milestone-list label{display:flex;align-items:center;gap:12px;padding:10px 5px;border-bottom:1px dashed var(--line)}.milestone-list input,.payment-schedule input[type=checkbox]{width:19px;height:19px;accent-color:#cf8514}.milestone-list .done{text-decoration:line-through;color:var(--muted)}.payment-schedule>div{display:grid;grid-template-columns:1fr 180px 90px;align-items:center;gap:12px;padding:8px 5px;border-bottom:1px dashed var(--line)}.payment-schedule input[type=number]{padding:9px;border:1px solid var(--line);border-radius:7px}.payment-schedule label{display:flex;align-items:center;gap:7px}.collection-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.collection-summary span{background:#f5f7f9;padding:12px;border-radius:8px;color:var(--muted);font-size:11px}.collection-summary b{display:block;color:var(--navy);font-size:15px;margin-top:4px}.project-notes{display:flex;flex-direction:column;gap:7px}.project-notes span{font-size:11px;font-weight:700;text-transform:uppercase}.project-notes textarea{border:1px solid var(--line);border-radius:7px;padding:10px}.table-progress{width:130px;margin-bottom:4px}
+
+/* Operations Module Utilities */
+.card{background:white;border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 9px #13233b08}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:white;color:var(--navy);padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover{background:#f8fafb;border-color:#c8d0da}
+.btn-primary{background:var(--navy)!important;color:white!important;border-color:var(--navy)!important}
+.btn-primary:hover{background:#1a3258!important}
+.btn-danger{background:#fff1f0!important;color:#b63831!important;border-color:#f0c2bf!important}
+.btn-danger:hover{background:#ffebe9!important}
+.btn-ghost{border:0;background:transparent;color:var(--muted);cursor:pointer;text-align:left;font-weight:600}
+.btn-ghost:hover{background:#f0f4f8;color:var(--navy)}
+.btn-ghost.active{background:var(--navy);color:white}
+.input{border:1px solid #d9dfe7;border-radius:8px;padding:9px 12px;outline:none;font-size:13px;width:100%;box-sizing:border-box}
+.input:focus{border-color:var(--navy);box-shadow:0 0 0 3px #10203a15}
+.badge-success{background:#e9f7f4;color:#167c70}
+.badge-danger{background:#fff1f0;color:#9d2823}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+.ops-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.ops-tab-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;transition:all .15s}
+.ops-tab-btn:hover{background:#f0f4f8;color:var(--navy)}
+.ops-tab-btn.active{background:var(--navy);color:white;border-color:var(--navy)}
