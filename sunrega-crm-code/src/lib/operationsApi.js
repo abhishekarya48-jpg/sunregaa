@@ -82,6 +82,18 @@ export async function saveUserPermissions(userId, permissions) {
   return true;
 }
 
+export async function saveBulkUserPermissions(userIds, permissions) {
+  if (!isSupabaseConfigured) throw new Error('Supabase not configured');
+  for (const userId of userIds) {
+    const { error } = await supabase.rpc('manage_user_permissions', {
+      p_target_user_id: userId,
+      p_permissions: permissions
+    });
+    if (error) throw error;
+  }
+  return true;
+}
+
 // ============================================================================
 // Godown / Inventory API
 // ============================================================================

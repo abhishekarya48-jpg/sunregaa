@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { ShieldCheck, UserCheck, Check, X, RefreshCw, AlertCircle, Save, CheckSquare, Square } from "lucide-react";
+import { ShieldCheck, UserCheck, Check, X, RefreshCw, AlertCircle, Save, CheckSquare, Square, Users, Layers } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { PERMISSION_GROUPS, fetchUserPermissions, saveUserPermissions } from "../lib/operationsApi";
+import { PERMISSION_GROUPS, fetchUserPermissions, saveUserPermissions, saveBulkUserPermissions } from "../lib/operationsApi";
 
 export default function EmployeeAccess() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [activeModalUsers, setActiveModalUsers] = useState(null); // Array of user objects or null
   const [userPerms, setUserPerms] = useState([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
+
+  const ALL_PERMISSION_KEYS = PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => p.key));
 
   const loadUsers = async () => {
     if (!isSupabaseConfigured) {
@@ -25,6 +28,7 @@ export default function EmployeeAccess() {
         .order("full_name", { ascending: true });
       if (error) throw error;
       setUsers(data || []);
+      setSelectedUserIds([]);
     } catch (err) {
       setMessage({ text: err.message || "Failed to load team members", type: "danger" });
     } finally {
@@ -36,16 +40,42 @@ export default function EmployeeAccess() {
     loadUsers();
   }, []);
 
-  const openConfig = async (user) => {
-    setSelectedUser(user);
+  const nonAdminUsers = users.filter((u) => u.role !== "admin");
+
+  const toggleSelectUser = (userId) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUserIds.length === nonAdminUsers.length) {
+      setSelectedUserIds([]);
+    } else {
+      setSelectedUserIds(nonAdminUsers.map((u) => u.id));
+    }
+  };
+
+  // Open modal for a single user
+  const openSingleConfig = async (user) => {
+    setActiveModalUsers([user]);
     setMessage({ text: "", type: "" });
     try {
       const perms = await fetchUserPermissions(user.id);
       setUserPerms(perms);
     } catch (err) {
       setUserPerms([]);
-      setMessage({ text: "Could not load current permissions", type: "danger" });
+      setMessage({ text: "Could not load current permissions for " + (user.full_name || user.email), type: "danger" });
     }
+  };
+
+  // Open modal for multiple selected users
+  const openBulkConfig = () => {
+    const selectedUsers = users.filter((u) => selectedUserIds.includes(u.id));
+    if (selectedUsers.length === 0) return;
+    setActiveModalUsers(selectedUsers);
+    setUserPerms([]);
+    setMessage({ text: "", type: "" });
   };
 
   const togglePermission = (permKey) => {
@@ -66,18 +96,55 @@ export default function EmployeeAccess() {
     }
   };
 
-  const handleSave = async () => {
-    if (!selectedUser) return;
+  const handleSaveModalPermissions = async () => {
+    if (!activeModalUsers || activeModalUsers.length === 0) return;
     setSaving(true);
     setMessage({ text: "", type: "" });
     try {
-      await saveUserPermissions(selectedUser.id, userPerms);
-      setMessage({ text: `Permissions updated successfully for ${selectedUser.full_name || selectedUser.email}`, type: "success" });
+      const userIds = activeModalUsers.map((u) => u.id);
+      await saveBulkUserPermissions(userIds, userPerms);
+      
+      const count = activeModalUsers.length;
+      const nameStr = count === 1 ? (activeModalUsers[0].full_name || activeModalUsers[0].email) : `${count} selected employees`;
+      setMessage({ text: `Permissions updated successfully for ${nameStr}`, type: "success" });
+      
       setTimeout(() => {
-        setSelectedUser(null);
+        setActiveModalUsers(null);
+        setSelectedUserIds([]);
       }, 1200);
     } catch (err) {
       setMessage({ text: err.message || "Failed to save permissions", type: "danger" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleQuickGrantAll = async () => {
+    if (selectedUserIds.length === 0) return;
+    setSaving(true);
+    setMessage({ text: "", type: "" });
+    try {
+      await saveBulkUserPermissions(selectedUserIds, ALL_PERMISSION_KEYS);
+      setMessage({ text: `Granted FULL operations permissions to ${selectedUserIds.length} selected employees!`, type: "success" });
+      setSelectedUserIds([]);
+    } catch (err) {
+      setMessage({ text: err.message || "Failed to grant permissions in bulk", type: "danger" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleQuickRevokeAll = async () => {
+    if (selectedUserIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to revoke all operations permissions for ${selectedUserIds.length} selected employee(s)?`)) return;
+    setSaving(true);
+    setMessage({ text: "", type: "" });
+    try {
+      await saveBulkUserPermissions(selectedUserIds, []);
+      setMessage({ text: `Revoked all operations permissions for ${selectedUserIds.length} selected employees`, type: "success" });
+      setSelectedUserIds([]);
+    } catch (err) {
+      setMessage({ text: err.message || "Failed to revoke permissions in bulk", type: "danger" });
     } finally {
       setSaving(false);
     }
@@ -92,13 +159,15 @@ export default function EmployeeAccess() {
     );
   }
 
+  const isAllNonAdminsSelected = nonAdminUsers.length > 0 && selectedUserIds.length === nonAdminUsers.length;
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22 }}>Employee Operations Access</h2>
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
-            Configure granular permissions for Godown Inventory and DSA Channel CRM for each employee.
+            Configure granular permissions for Godown Inventory and DSA Channel CRM individually or for multiple selected users.
           </p>
         </div>
         <button className="btn" onClick={loadUsers}>
@@ -125,10 +194,64 @@ export default function EmployeeAccess() {
         </div>
       )}
 
+      {/* Multi-Select Bulk Actions Bar */}
+      {selectedUserIds.length > 0 && (
+        <div
+          style={{
+            background: "var(--panel-bg, #F0F4F8)",
+            border: "1px solid var(--border)",
+            borderLeft: "4px solid var(--primary, #0F766E)",
+            borderRadius: 8,
+            padding: "12px 18px",
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Users size={20} style={{ color: "var(--primary)" }} />
+            <span style={{ fontWeight: 600, fontSize: 14 }}>
+              {selectedUserIds.length} employee(s) selected
+            </span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={openBulkConfig} disabled={saving}>
+              <Layers size={14} style={{ marginRight: 6 }} />
+              Configure Selected ({selectedUserIds.length})
+            </button>
+            <button className="btn" style={{ fontSize: 13, color: "#1F7A4D", borderColor: "#1F7A4D" }} onClick={handleQuickGrantAll} disabled={saving}>
+              <CheckSquare size={14} style={{ marginRight: 6 }} />
+              Grant Full Access
+            </button>
+            <button className="btn" style={{ fontSize: 13, color: "#B23B2E", borderColor: "#B23B2E" }} onClick={handleQuickRevokeAll} disabled={saving}>
+              <Square size={14} style={{ marginRight: 6 }} />
+              Revoke Access
+            </button>
+            <button className="btn" style={{ fontSize: 13 }} onClick={() => setSelectedUserIds([])}>
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="table" style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
+              <th style={{ width: 44, textAlign: "center", padding: "12px 14px" }}>
+                <input
+                  type="checkbox"
+                  checked={isAllNonAdminsSelected}
+                  onChange={toggleSelectAll}
+                  disabled={nonAdminUsers.length === 0}
+                  title="Select / Deselect all employees"
+                  style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--primary)" }}
+                />
+              </th>
               <th style={{ textAlign: "left", padding: "12px 14px" }}>Employee</th>
               <th style={{ textAlign: "left", padding: "12px 14px" }}>Worker ID</th>
               <th style={{ textAlign: "left", padding: "12px 14px" }}>Designation</th>
@@ -140,8 +263,28 @@ export default function EmployeeAccess() {
           <tbody>
             {users.map((u) => {
               const isAdmin = u.role === "admin";
+              const isSelected = selectedUserIds.includes(u.id);
+
               return (
-                <tr key={u.id} style={{ borderTop: "1px solid var(--border)" }}>
+                <tr
+                  key={u.id}
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    background: isSelected ? "rgba(15,118,110,0.04)" : "transparent"
+                  }}
+                >
+                  <td style={{ textAlign: "center", padding: "12px 14px" }}>
+                    {!isAdmin ? (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectUser(u.id)}
+                        style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--primary)" }}
+                      />
+                    ) : (
+                      <span className="muted" style={{ fontSize: 11 }}>—</span>
+                    )}
+                  </td>
                   <td style={{ padding: "12px 14px" }}>
                     <b>{u.full_name || "—"}</b>
                     {u.phone && <div className="muted" style={{ fontSize: 12 }}>{u.phone}</div>}
@@ -174,7 +317,7 @@ export default function EmployeeAccess() {
                         Auto-Authorized
                       </button>
                     ) : (
-                      <button className="btn btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => openConfig(u)}>
+                      <button className="btn btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => openSingleConfig(u)}>
                         Configure Access
                       </button>
                     )}
@@ -184,7 +327,7 @@ export default function EmployeeAccess() {
             })}
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", padding: 32 }} className="muted">
+                <td colSpan={7} style={{ textAlign: "center", padding: 32 }} className="muted">
                   No employee profiles found in the database.
                 </td>
               </tr>
@@ -193,8 +336,8 @@ export default function EmployeeAccess() {
         </table>
       </div>
 
-      {/* Permission Configuration Modal */}
-      {selectedUser && (
+      {/* Permission Configuration Modal (Single or Multi-User) */}
+      {activeModalUsers && (
         <div
           style={{
             position: "fixed",
@@ -206,15 +349,25 @@ export default function EmployeeAccess() {
             zIndex: 100
           }}
         >
-          <div className="card" style={{ width: 560, maxHeight: "90vh", padding: 24, display: "flex", flexDirection: "column" }}>
+          <div className="card" style={{ width: 600, maxHeight: "90vh", padding: 24, display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 18 }}>Configure Operations Access</h3>
+                <h3 style={{ margin: 0, fontSize: 18 }}>
+                  {activeModalUsers.length === 1 ? "Configure Operations Access" : `Bulk Operations Access (${activeModalUsers.length} Users)`}
+                </h3>
                 <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
-                  Employee: <b>{selectedUser.full_name || selectedUser.email}</b> ({selectedUser.user_id || selectedUser.email})
+                  {activeModalUsers.length === 1 ? (
+                    <>
+                      Employee: <b>{activeModalUsers[0].full_name || activeModalUsers[0].email}</b> ({activeModalUsers[0].user_id || activeModalUsers[0].email})
+                    </>
+                  ) : (
+                    <>
+                      Target Employees: <b>{activeModalUsers.map((u) => u.full_name || u.email).join(", ")}</b>
+                    </>
+                  )}
                 </p>
               </div>
-              <button onClick={() => setSelectedUser(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted)" }}>
+              <button onClick={() => setActiveModalUsers(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted)" }}>
                 <X size={18} />
               </button>
             </div>
@@ -223,7 +376,6 @@ export default function EmployeeAccess() {
               {PERMISSION_GROUPS.map((group) => {
                 const groupPermKeys = group.permissions.map((p) => p.key);
                 const allSelected = groupPermKeys.every((k) => userPerms.includes(k));
-                const someSelected = groupPermKeys.some((k) => userPerms.includes(k));
 
                 return (
                   <div key={group.key} style={{ marginBottom: 18, border: "1px solid var(--border)", borderRadius: 8, padding: 14 }}>
@@ -280,12 +432,12 @@ export default function EmployeeAccess() {
                 {userPerms.length} permission(s) selected
               </span>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" onClick={() => setSelectedUser(null)}>
+                <button className="btn" onClick={() => setActiveModalUsers(null)}>
                   Cancel
                 </button>
-                <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                <button className="btn btn-primary" onClick={handleSaveModalPermissions} disabled={saving}>
                   <Save size={14} style={{ marginRight: 6 }} />
-                  {saving ? "Saving..." : "Save Permissions"}
+                  {saving ? "Saving..." : activeModalUsers.length === 1 ? "Save Permissions" : `Apply to ${activeModalUsers.length} Users`}
                 </button>
               </div>
             </div>
